@@ -1,0 +1,55 @@
+name: Build and Release DMG
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build Release archive
+        run: |
+          xcodebuild archive \
+            -project Lector.xcodeproj \
+            -scheme Lector \
+            -configuration Release \
+            -archivePath ${{ runner.temp }}/Lector.xcarchive \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Export app from archive
+        run: |
+          cp -R "${{ runner.temp }}/Lector.xcarchive/Products/Applications/Lector.app" \
+                "${{ runner.temp }}/Lector.app"
+
+      - name: Create DMG
+        run: |
+          DMG_DIR="${{ runner.temp }}/dmg-contents"
+          mkdir -p "$DMG_DIR"
+          cp -R "${{ runner.temp }}/Lector.app" "$DMG_DIR/"
+          ln -s /Applications "$DMG_DIR/Applications"
+          hdiutil create \
+            -volname "Lector" \
+            -srcfolder "$DMG_DIR" \
+            -ov \
+            -format UDZO \
+            "${{ runner.temp }}/Lector.dmg"
+
+      - name: Upload DMG to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/Lector.dmg
