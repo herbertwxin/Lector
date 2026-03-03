@@ -5,12 +5,37 @@ import PDFKit
 
 struct ContentView: View {
     @Bindable var state: AppState
-    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
+    @State private var sidebarWidth: CGFloat = 320
+    @State private var dragStartWidth: CGFloat = 320
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            TOCView(state: state)
-        } detail: {
+        HStack(spacing: 0) {
+            if state.showTOC {
+                TOCView(state: state)
+                    .frame(width: sidebarWidth)
+
+                // Divider with wide drag target
+                ZStack {
+                    Color(NSColor.separatorColor).frame(width: 1)
+                    Color.clear
+                        .frame(width: 8)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 1)
+                                .onChanged { value in
+                                    sidebarWidth = max(180, min(500, dragStartWidth + value.translation.width))
+                                }
+                                .onEnded { _ in
+                                    dragStartWidth = sidebarWidth
+                                }
+                        )
+                        .onHover { hovering in
+                            if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                        }
+                }
+                .frame(width: 8)
+            }
+
             ZStack(alignment: .bottom) {
                 if state.document != nil {
                     PDFHostView(state: state)
@@ -38,14 +63,16 @@ struct ContentView: View {
                 .animation(.easeInOut(duration: 0.15), value: state.isSearching)
             }
         }
-        // Remove the automatic sidebar-toggle button that NavigationSplitView
-        // injects into the window toolbar. Without this it appears as a blue
-        // accent-colour line in the title bar whenever the WelcomeView is shown
-        // (PDFHostView's .ignoresSafeArea() normally hides it by covering the
-        // toolbar area with the PDF canvas).
-        .toolbar(removing: .sidebarToggle)
-        .onChange(of: state.showTOC) { _, newValue in
-            withAnimation { columnVisibility = newValue ? .all : .detailOnly }
+        .animation(.easeInOut(duration: 0.2), value: state.showTOC)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    state.showTOC.toggle()
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }
+                .help("Toggle Table of Contents")
+            }
         }
         .sheet(isPresented: $state.showQuickSelect) {
             QuickSelectPanel(state: state)

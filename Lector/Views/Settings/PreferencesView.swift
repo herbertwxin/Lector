@@ -35,15 +35,6 @@ struct PreferencesView: View {
                 Toggle("Remember last view position", isOn: $state.rememberLastPosition)
             }
 
-            Section("Documents") {
-                Picker("Open PDFs in", selection: $state.documentOpenBehavior) {
-                    Text("Current Window").tag("current")
-                    Text("New Tab").tag("tab")
-                    Text("New Window").tag("window")
-                }
-                .pickerStyle(.segmented)
-            }
-
             Section("Database") {
                 LabeledContent("Location") {
                     let appSupport = FileManager.default.urls(
@@ -63,7 +54,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 430)
+        .frame(width: 450, height: 360)
         .padding()
     }
 }

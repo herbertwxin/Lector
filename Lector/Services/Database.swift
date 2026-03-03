@@ -95,18 +95,34 @@ final class Database {
         migrateDocumentsTable()
     }
 
-    // Adds columns introduced after the initial release; silently ignores
-    // "duplicate column" errors so it is safe on both old and new databases.
+    // Adds columns introduced after the initial release; skips any column
+    // that already exists so it is safe on both old and new databases.
     private func migrateDocumentsTable() {
+        let existing = existingColumns(in: "documents")
         let migrations: [(String, String)] = [
             ("last_page",         "INTEGER NOT NULL DEFAULT 0"),
             ("last_y_offset",     "REAL    NOT NULL DEFAULT 0"),
             ("last_zoom",         "REAL    NOT NULL DEFAULT 1.0"),
             ("last_fit_to_width", "INTEGER NOT NULL DEFAULT 1"),
         ]
-        for (col, def) in migrations {
+        for (col, def) in migrations where !existing.contains(col) {
             sqlite3_exec(db, "ALTER TABLE documents ADD COLUMN \(col) \(def);", nil, nil, nil)
         }
+    }
+
+    private func existingColumns(in table: String) -> Set<String> {
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, "PRAGMA table_info(\(table));", -1, &stmt, nil) == SQLITE_OK else {
+            return []
+        }
+        var columns = Set<String>()
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let cStr = sqlite3_column_text(stmt, 1) {
+                columns.insert(String(cString: cStr))
+            }
+        }
+        return columns
     }
 
     private func enableWAL() throws {

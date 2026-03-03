@@ -94,20 +94,14 @@ final class AppState {
     var rememberLastPosition: Bool {
         didSet { UserDefaults.standard.set(rememberLastPosition, forKey: "rememberLastPosition") }
     }
-    /// "current" | "tab" | "window"
-    var documentOpenBehavior: String {
-        didSet { UserDefaults.standard.set(documentOpenBehavior, forKey: "documentOpenBehavior") }
-    }
 
     // MARK: Init
 
     init() {
         UserDefaults.standard.register(defaults: [
             "rememberLastPosition": true,
-            "documentOpenBehavior": "current",
         ])
-        rememberLastPosition    = UserDefaults.standard.bool(forKey: "rememberLastPosition")
-        documentOpenBehavior    = UserDefaults.standard.string(forKey: "documentOpenBehavior") ?? "current"
+        rememberLastPosition = UserDefaults.standard.bool(forKey: "rememberLastPosition")
         do {
             database = try Database()
         } catch {
@@ -146,13 +140,12 @@ final class AppState {
             return
         }
 
-        // If a document is already open and the preference is for a new
-        // tab or window, delegate to AppDelegate via notification.
-        if document != nil, documentOpenBehavior != "current" {
+        // If a document is already open, open the new one in a separate window.
+        if document != nil {
             NotificationCenter.default.post(
                 name: .lectorOpenNewWindow,
                 object: nil,
-                userInfo: ["url": url, "asTab": documentOpenBehavior == "tab"]
+                userInfo: ["url": url]
             )
             return
         }
