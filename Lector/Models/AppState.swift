@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import AppKit
 import PDFKit
 import Observation
