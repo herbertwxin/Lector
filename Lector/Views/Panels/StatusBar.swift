@@ -12,9 +12,12 @@ struct StatusBar: View {
 
             Spacer()
 
-            // Document name
+            // Chapter name (falls back to filename)
             if let url = state.documentURL {
-                Text(url.lastPathComponent)
+                let label = state.currentChapterName.isEmpty
+                    ? url.lastPathComponent
+                    : state.currentChapterName
+                Text(label)
                     .lineLimit(1)
                     .foregroundColor(.secondary)
                     .font(.caption)

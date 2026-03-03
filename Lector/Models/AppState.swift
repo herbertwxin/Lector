@@ -480,6 +480,29 @@ final class AppState {
         mode = .normal
     }
 
+    // ── Chapter name for current page ─────────────────────────────────────
+
+    var currentChapterName: String {
+        guard let doc = document, let outline = doc.outlineRoot else { return "" }
+        var bestLabel: String? = nil
+        var bestPage = -1
+        func walk(_ node: PDFOutline) {
+            for i in 0..<node.numberOfChildren {
+                guard let child = node.child(at: i) else { continue }
+                if let destPage = child.destination?.page {
+                    let idx = doc.index(for: destPage)
+                    if idx <= currentPage && idx > bestPage {
+                        bestPage = idx
+                        bestLabel = child.label
+                    }
+                }
+                walk(child)
+            }
+        }
+        walk(outline)
+        return bestLabel ?? ""
+    }
+
     // ── Chapter navigation ────────────────────────────────────────────────
 
     func jumpToChapter(forward: Bool) {
