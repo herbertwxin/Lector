@@ -90,9 +90,16 @@ final class AppState {
     @ObservationIgnored private let keyTrie = KeyTrie()
     private(set) var recentDocuments: [RecentDocument] = []
 
+    // MARK: Preferences
+    var rememberLastPosition: Bool {
+        didSet { UserDefaults.standard.set(rememberLastPosition, forKey: "rememberLastPosition") }
+    }
+
     // MARK: Init
 
     init() {
+        UserDefaults.standard.register(defaults: ["rememberLastPosition": true])
+        rememberLastPosition = UserDefaults.standard.bool(forKey: "rememberLastPosition")
         do {
             database = try Database()
         } catch {
@@ -100,6 +107,12 @@ final class AppState {
         }
         keyTrie.build(from: DefaultBindings.keybindings)
         loadRecentDocuments()
+
+        // Save position before the app terminates.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in self?.saveCurrentPosition() }
     }
 
     // MARK: - Document Opening
@@ -124,6 +137,9 @@ final class AppState {
             statusMessage = "Failed to open: \(url.lastPathComponent)"
             return
         }
+        // Save position of whatever was open before switching.
+        saveCurrentPosition()
+
         // Push current state before navigating away
         if documentURL != nil {
             pushNavState()
@@ -135,11 +151,32 @@ final class AppState {
         let checksum = Checksum.sha256(of: url) ?? ""
         documentID = (try? database.upsertDocument(url: url, checksum: checksum)) ?? 0
 
-        currentPage = 0
-        scrollYOffset = 0
+        // Restore or reset view position.
+        if rememberLastPosition,
+           let pos = try? database.fetchLastPosition(docID: documentID) {
+            currentPage   = pos.page
+            scrollYOffset = pos.yOffset
+            zoomScale     = CGFloat(pos.zoom)
+            fitToWidth    = pos.fitToWidth
+        } else {
+            currentPage   = 0
+            scrollYOffset = 0
+        }
+
         loadAnnotations()
         loadRecentDocuments()
         statusMessage = url.lastPathComponent
+    }
+
+    func saveCurrentPosition() {
+        guard documentID > 0 else { return }
+        try? database.saveLastPosition(
+            docID: documentID,
+            page: currentPage,
+            yOffset: scrollYOffset,
+            zoom: Double(zoomScale),
+            fitToWidth: fitToWidth
+        )
     }
 
     func loadAnnotations() {

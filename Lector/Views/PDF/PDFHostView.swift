@@ -14,20 +14,19 @@ struct PDFHostView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: PDFContainerView, context: Context) {
-        // Restore PDF focus whenever we return to normal mode from command/search.
-        // This runs every time AppState changes, so we gate it on a transition flag.
+        // Track any input mode that steals focus: command bar, search bar, quick-select sheet.
+        let inInput: Bool
         switch state.mode {
-        case .command, .search:
+        case .command, .search: inInput = true
+        default:                inInput = false
+        }
+        if inInput || state.showQuickSelect {
             context.coordinator.wasInInputMode = true
-        case .normal:
-            if context.coordinator.wasInInputMode {
-                context.coordinator.wasInInputMode = false
-                DispatchQueue.main.async {
-                    container.window?.makeFirstResponder(container.pdfView)
-                }
+        } else if context.coordinator.wasInInputMode {
+            context.coordinator.wasInInputMode = false
+            DispatchQueue.main.async {
+                container.window?.makeFirstResponder(container.pdfView)
             }
-        default:
-            break
         }
         container.update(state: state)
     }

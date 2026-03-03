@@ -55,7 +55,16 @@ struct LectorApp: App {
 // file-open events directly to .onOpenURL on the WindowGroup.
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    // Keep the app alive when the window is closed (red button).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
+    }
+
+    // Clicking the Dock icon re-shows the window when none are visible.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows {
+            sender.windows.first?.makeKeyAndOrderFront(nil)
+        }
         return true
     }
 

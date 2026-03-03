@@ -31,6 +31,10 @@ struct PreferencesView: View {
                 }
             }
 
+            Section("Navigation") {
+                Toggle("Remember last view position", isOn: $state.rememberLastPosition)
+            }
+
             Section("Database") {
                 LabeledContent("Location") {
                     let appSupport = FileManager.default.urls(
@@ -50,7 +54,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 300)
+        .frame(width: 450, height: 360)
         .padding()
     }
 }

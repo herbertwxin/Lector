@@ -33,10 +33,14 @@ final class Database {
         PRAGMA foreign_keys = ON;
 
         CREATE TABLE IF NOT EXISTS documents (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            url         TEXT    NOT NULL UNIQUE,
-            checksum    TEXT    NOT NULL,
-            last_opened REAL    NOT NULL DEFAULT 0
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            url               TEXT    NOT NULL UNIQUE,
+            checksum          TEXT    NOT NULL,
+            last_opened       REAL    NOT NULL DEFAULT 0,
+            last_page         INTEGER NOT NULL DEFAULT 0,
+            last_y_offset     REAL    NOT NULL DEFAULT 0,
+            last_zoom         REAL    NOT NULL DEFAULT 1.0,
+            last_fit_to_width INTEGER NOT NULL DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS bookmarks (
@@ -88,6 +92,21 @@ final class Database {
         );
         """
         try exec(sql)
+        migrateDocumentsTable()
+    }
+
+    // Adds columns introduced after the initial release; silently ignores
+    // "duplicate column" errors so it is safe on both old and new databases.
+    private func migrateDocumentsTable() {
+        let migrations: [(String, String)] = [
+            ("last_page",         "INTEGER NOT NULL DEFAULT 0"),
+            ("last_y_offset",     "REAL    NOT NULL DEFAULT 0"),
+            ("last_zoom",         "REAL    NOT NULL DEFAULT 1.0"),
+            ("last_fit_to_width", "INTEGER NOT NULL DEFAULT 1"),
+        ]
+        for (col, def) in migrations {
+            sqlite3_exec(db, "ALTER TABLE documents ADD COLUMN \(col) \(def);", nil, nil, nil)
+        }
     }
 
     private func enableWAL() throws {
@@ -142,6 +161,45 @@ final class Database {
             ))
         }
         return results
+    }
+
+    // MARK: - Last Position
+
+    struct LastPosition {
+        let page: Int
+        let yOffset: Double
+        let zoom: Double
+        let fitToWidth: Bool
+    }
+
+    func saveLastPosition(docID: Int64, page: Int, yOffset: Double,
+                          zoom: Double, fitToWidth: Bool) throws {
+        let sql = """
+        UPDATE documents
+        SET last_page = ?, last_y_offset = ?, last_zoom = ?, last_fit_to_width = ?
+        WHERE id = ?;
+        """
+        try exec(sql, bindings: [page, yOffset, zoom, fitToWidth ? 1 : 0, docID])
+    }
+
+    func fetchLastPosition(docID: Int64) throws -> LastPosition? {
+        let sql = """
+        SELECT last_page, last_y_offset, last_zoom, last_fit_to_width
+        FROM documents WHERE id = ?;
+        """
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw DBError.prepareFailed(lastError)
+        }
+        sqlite3_bind_int64(stmt, 1, docID)
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return LastPosition(
+            page:        Int(sqlite3_column_int(stmt, 0)),
+            yOffset:     sqlite3_column_double(stmt, 1),
+            zoom:        sqlite3_column_double(stmt, 2),
+            fitToWidth:  sqlite3_column_int(stmt, 3) != 0
+        )
     }
 
     // MARK: - Bookmarks
