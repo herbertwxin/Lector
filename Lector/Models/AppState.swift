@@ -85,6 +85,7 @@ final class AppState {
     var portalSourceY: Double = 0
 
     // MARK: Services
+    @ObservationIgnored let isReadOnly: Bool
     @ObservationIgnored let database: Database
     @ObservationIgnored private let navHistory = NavHistory()
     @ObservationIgnored private let keyTrie = KeyTrie()
@@ -97,7 +98,8 @@ final class AppState {
 
     // MARK: Init
 
-    init() {
+    init(readOnly: Bool = false) {
+        self.isReadOnly = readOnly
         UserDefaults.standard.register(defaults: [
             "rememberLastPosition": true,
         ])
@@ -329,9 +331,9 @@ final class AppState {
 
         // Bookmarks
         case .addBookmark:
-            addBookmarkAtCurrentPosition()
+            if isReadOnly { statusMessage = "Read-only window" } else { addBookmarkAtCurrentPosition() }
         case .deleteBookmark:
-            deleteBookmarkAtCurrentPosition()
+            if isReadOnly { statusMessage = "Read-only window" } else { deleteBookmarkAtCurrentPosition() }
         case .listBookmarks:
             showBookmarksPanel(allDocs: false)
         case .listAllBookmarks:
@@ -339,9 +341,9 @@ final class AppState {
 
         // Highlights
         case .addHighlight(let ch):
-            addHighlightWithType(ch)
+            if isReadOnly { statusMessage = "Read-only window" } else { addHighlightWithType(ch) }
         case .deleteHighlight:
-            deleteHighlightAtCurrentPosition()
+            if isReadOnly { statusMessage = "Read-only window" } else { deleteHighlightAtCurrentPosition() }
         case .listHighlights:
             showHighlightsPanel()
         case .nextHighlight:
@@ -351,7 +353,7 @@ final class AppState {
 
         // Marks
         case .setMark(let ch):
-            setMark(symbol: ch)
+            if isReadOnly { statusMessage = "Read-only window" } else { setMark(symbol: ch) }
         case .gotoMark(let ch):
             gotoMark(symbol: ch)
         case .listMarks:
@@ -359,13 +361,13 @@ final class AppState {
 
         // Portals
         case .setPortalSource:
-            handlePortalCommand()
+            if isReadOnly { statusMessage = "Read-only window" } else { handlePortalCommand() }
         case .gotoPortal:
             gotoNearestPortal()
         case .editPortal:
             break   // future
         case .deletePortal:
-            deletePortalAtCurrentPosition()
+            if isReadOnly { statusMessage = "Read-only window" } else { deletePortalAtCurrentPosition() }
 
         // Web search
         case .webSearch(let engine):
@@ -524,6 +526,16 @@ final class AppState {
         // ── UI / Misc ─────────────────────────────────────────────────────
         case "toc":
             showTOC.toggle()
+        case "split", "sp":
+            if let url = documentURL {
+                NotificationCenter.default.post(
+                    name: .lectorOpenNewWindow,
+                    object: nil,
+                    userInfo: ["url": url, "readOnly": true, "page": currentPage, "yOffset": scrollYOffset]
+                )
+            } else {
+                statusMessage = "No document open"
+            }
         case "open", "o":
             openDocumentDialog()
         case "recent", "O":
@@ -545,6 +557,7 @@ final class AppState {
         }
 
         mode = .normal
+        NotificationCenter.default.post(name: .lectorFocusPDF, object: nil)
     }
 
     // ── Chapter name for current page ─────────────────────────────────────

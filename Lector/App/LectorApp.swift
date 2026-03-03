@@ -95,6 +95,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSWindow.allowsAutomaticWindowTabbing = false
 
+        // Close any Settings window that macOS restored from the previous session.
+        DispatchQueue.main.async {
+            NSApp.windows
+                .filter { $0.title == "Settings" || $0.title == "Preferences" }
+                .forEach { $0.close() }
+        }
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleOpenNewWindow(_:)),
@@ -122,7 +129,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func handleOpenNewWindow(_ notification: Notification) {
         guard let url = notification.userInfo?["url"] as? URL else { return }
-        let newState = AppState()
+        let readOnly  = notification.userInfo?["readOnly"]  as? Bool   ?? false
+        let startPage = notification.userInfo?["page"]      as? Int
+        let startY    = notification.userInfo?["yOffset"]   as? Double
+
+        let newState = AppState(readOnly: readOnly)
         let rootView = ContentView(state: newState)
             .frame(minWidth: 800, minHeight: 600)
             .onDisappear { newState.closeDocument() }
@@ -135,5 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
         newState.openDocument(at: url)
+        if let page = startPage { newState.currentPage = page }
+        if let y    = startY    { newState.scrollYOffset = y }
     }
 }
