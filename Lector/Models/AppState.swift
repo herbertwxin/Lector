@@ -296,29 +296,211 @@ final class AppState {
     // MARK: - Execute Command String (from `:` mode)
 
     func executeCommandString(_ input: String) {
-        let parts = input.trimmingCharacters(in: .whitespaces).components(separatedBy: " ")
-        guard let name = parts.first else { return }
+        let raw   = input.trimmingCharacters(in: .whitespaces)
+        let parts = raw.components(separatedBy: " ")
+        guard let name = parts.first?.lowercased(), !name.isEmpty else { mode = .normal; return }
+        let arg  = parts.dropFirst().first ?? ""
+        let rest = parts.dropFirst().joined(separator: " ")
+
         switch name {
-        case "dark", "darkmode":   isDarkMode = true
-        case "light", "lightmode": isDarkMode = false
-        case "toc":                showTOC.toggle()
-        case "quit", "q":          NSApplication.shared.terminate(nil)
-        case "open", "o":          openDocumentDialog()
-        case "page":
-            if let p = parts.dropFirst().first.flatMap(Int.init) {
-                execute(.gotoPage(p - 1))
+
+        // ── Appearance ──────────────────────────────────────────────────
+        case "dark", "darkmode":
+            isDarkMode = true
+        case "light", "lightmode":
+            isDarkMode = false
+        case "toggledark", "toggledarkmode":
+            isDarkMode.toggle()
+
+        // ── Navigation ──────────────────────────────────────────────────
+        case "page", "p":
+            if let p = Int(arg) { execute(.gotoPage(p - 1)) }
+            else { statusMessage = "Usage: page <number>" }
+        case "beginning", "gg":
+            execute(.gotoBeginning)
+        case "end", "G":
+            execute(.gotoEnd)
+        case "next", "n":
+            execute(.nextResult)
+        case "prev", "previous", "N":
+            execute(.prevResult)
+        case "nextpage":
+            execute(.nextPage)
+        case "prevpage", "previouspage":
+            execute(.prevPage)
+        case "back":
+            execute(.back)
+        case "forward":
+            execute(.forward)
+        case "nextchapter", "gc":
+            jumpToChapter(forward: true)
+        case "prevchapter", "gC":
+            jumpToChapter(forward: false)
+
+        // ── Zoom ─────────────────────────────────────────────────────────
+        case "zoom", "z":
+            if let pct = Double(arg) {
+                fitToWidth = false
+                zoomScale  = CGFloat(pct / 100.0)
+            } else { statusMessage = "Usage: zoom <percent>" }
+        case "zoomin":
+            execute(.zoomIn)
+        case "zoomout":
+            execute(.zoomOut)
+        case "fit", "fitwidth", "fw":
+            execute(.fitToWidth)
+        case "actualsize", "reset":
+            execute(.actualSize)
+
+        // ── Search ───────────────────────────────────────────────────────
+        case "search", "/":
+            if rest.isEmpty {
+                execute(.beginSearch)
+            } else {
+                searchText  = rest
+                isSearching = true
+                mode        = .search
             }
+
+        // ── Bookmarks ────────────────────────────────────────────────────
+        case "bookmark", "bm", "b":
+            addBookmarkAtCurrentPosition(label: rest.isEmpty ? nil : rest)
+        case "deletebookmark", "delbookmark", "db":
+            execute(.deleteBookmark)
+        case "bookmarks", "gb":
+            execute(.listBookmarks)
+        case "allbookmarks", "gB":
+            execute(.listAllBookmarks)
+
+        // ── Highlights ───────────────────────────────────────────────────
+        case "highlight", "hl":
+            let type: Character = arg.first ?? "a"
+            execute(.addHighlight(type))
+        case "deletehighlight", "delhighlight", "dh":
+            execute(.deleteHighlight)
+        case "highlights", "gh":
+            execute(.listHighlights)
+        case "nexthighlight", "gnh":
+            execute(.nextHighlight)
+        case "prevhighlight", "gNh":
+            execute(.prevHighlight)
+
+        // ── Marks ─────────────────────────────────────────────────────────
+        case "mark", "m":
+            if let ch = arg.first { execute(.setMark(ch)) }
+            else { statusMessage = "Usage: mark <letter>" }
+        case "goto", "gotomark":
+            if let ch = arg.first { execute(.gotoMark(ch)) }
+            else { statusMessage = "Usage: goto <letter>" }
+        case "marks", "gm":
+            execute(.listMarks)
+
+        // ── Portals ──────────────────────────────────────────────────────
+        case "portal", "po":
+            execute(.setPortalSource)
+        case "deleteportal", "delportal", "dp":
+            execute(.deletePortal)
+        case "gotoportal", "gp":
+            execute(.gotoPortal)
+
+        // ── Web search ───────────────────────────────────────────────────
+        case "scholar", "s":
+            if !rest.isEmpty {
+                let q = rest.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                if let url = URL(string: String(format: WebEngine.scholar.urlTemplate, q)) {
+                    NSWorkspace.shared.open(url)
+                }
+            } else {
+                execute(.webSearch(engine: .scholar))
+            }
+        case "google", "g":
+            if !rest.isEmpty {
+                let q = rest.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                if let url = URL(string: String(format: WebEngine.google.urlTemplate, q)) {
+                    NSWorkspace.shared.open(url)
+                }
+            } else {
+                execute(.webSearch(engine: .google))
+            }
+
+        // ── UI / Misc ─────────────────────────────────────────────────────
+        case "toc":
+            showTOC.toggle()
+        case "open", "o":
+            openDocumentDialog()
+        case "recent", "O":
+            showRecentDocsPanel()
+        case "copy":
+            NotificationCenter.default.post(name: .lectorCopySelection, object: nil)
+        case "rotate", "r":
+            NotificationCenter.default.post(name: .lectorRotate, object: arg == "ccw" ? false : true)
+        case "fullscreen", "f11":
+            NSApplication.shared.mainWindow?.toggleFullScreen(nil)
+        case "quit", "q":
+            NSApplication.shared.terminate(nil)
+
         default:
             statusMessage = "Unknown command: \(name)"
         }
+
         mode = .normal
+    }
+
+    // ── Chapter navigation ────────────────────────────────────────────────
+
+    func jumpToChapter(forward: Bool) {
+        guard let doc = document,
+              let outline = doc.outlineRoot
+        else { return }
+
+        var pages: [Int] = []
+        collectOutlinePages(node: outline, doc: doc, into: &pages)
+        pages.sort()
+
+        if forward {
+            if let next = pages.first(where: { $0 > currentPage }) {
+                pushNavState()
+                currentPage = next
+            }
+        } else {
+            if let prev = pages.last(where: { $0 < currentPage }) {
+                pushNavState()
+                currentPage = prev
+            }
+        }
+    }
+
+    private func collectOutlinePages(node: PDFOutline, doc: PDFDocument, into pages: inout [Int]) {
+        for i in 0..<node.numberOfChildren {
+            guard let child = node.child(at: i) else { continue }
+            if let page = child.destination?.page {
+                pages.append(doc.index(for: page))
+            }
+            collectOutlinePages(node: child, doc: doc, into: &pages)
+        }
+    }
+
+    // ── Recent docs quick-select ──────────────────────────────────────────
+
+    private func showRecentDocsPanel() {
+        let items: [QuickSelectItem] = recentDocuments.map { doc in
+            QuickSelectItemImpl(
+                title: doc.url.lastPathComponent,
+                subtitle: doc.url.deletingLastPathComponent().path,
+                page: 0,
+                action: { [weak self] in self?.openDocument(at: doc.url) }
+            )
+        }
+        quickSelectItems = items
+        quickSelectTitle = "Recent Documents"
+        showQuickSelect = true
     }
 
     // MARK: - Bookmarks
 
-    private func addBookmarkAtCurrentPosition() {
+    private func addBookmarkAtCurrentPosition(label: String? = nil) {
         guard documentID > 0 else { return }
-        let text = document?.page(at: currentPage)?.label ?? "Page \(currentPage + 1)"
+        let text = label ?? document?.page(at: currentPage)?.label ?? "Page \(currentPage + 1)"
         _ = try? database.addBookmark(docID: documentID, page: currentPage,
                                       yOffset: scrollYOffset, text: text)
         loadAnnotations()
@@ -575,9 +757,11 @@ private final class QuickSelectItemImpl: QuickSelectItem {
 // MARK: - Notifications
 
 extension Notification.Name {
-    static let lectorAddHighlight = Notification.Name("lectorAddHighlight")
-    static let lectorSearchNext   = Notification.Name("lectorSearchNext")
-    static let lectorSearchPrev   = Notification.Name("lectorSearchPrev")
-    static let lectorWebSearch    = Notification.Name("lectorWebSearch")
+    static let lectorAddHighlight       = Notification.Name("lectorAddHighlight")
+    static let lectorSearchNext         = Notification.Name("lectorSearchNext")
+    static let lectorSearchPrev         = Notification.Name("lectorSearchPrev")
+    static let lectorWebSearch          = Notification.Name("lectorWebSearch")
     static let lectorAnnotationsChanged = Notification.Name("lectorAnnotationsChanged")
+    static let lectorCopySelection      = Notification.Name("lectorCopySelection")
+    static let lectorRotate             = Notification.Name("lectorRotate")
 }

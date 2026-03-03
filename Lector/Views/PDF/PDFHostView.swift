@@ -108,6 +108,22 @@ final class PDFContainerView: NSView {
             name: .lectorSearchPrev,
             object: nil
         )
+
+        // Copy selection
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCopy),
+            name: .lectorCopySelection,
+            object: nil
+        )
+
+        // Rotate
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRotate(_:)),
+            name: .lectorRotate,
+            object: nil
+        )
     }
 
     @objc private func refreshAnnotations() {
@@ -148,12 +164,27 @@ final class PDFContainerView: NSView {
     }
 
     @objc private func handleSearchNext() {
-        pdfView.goToNextPage(nil)   // approximate: jump between pages
-        // Proper implementation: track search results via PDFDocumentDidFindMatch notifications
+        pdfView.goToNextPage(nil)
     }
 
     @objc private func handleSearchPrev() {
         pdfView.goToPreviousPage(nil)
+    }
+
+    @objc private func handleCopy() {
+        guard let text = pdfView.currentSelection?.string, !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    @objc private func handleRotate(_ note: Notification) {
+        let clockwise = note.object as? Bool ?? true
+        guard let doc = pdfView.document else { return }
+        for i in 0..<doc.pageCount {
+            guard let page = doc.page(at: i) else { continue }
+            page.rotation += clockwise ? 90 : -90
+        }
+        pdfView.layoutDocumentView()
     }
 }
 

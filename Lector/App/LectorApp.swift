@@ -12,6 +12,9 @@ struct LectorApp: App {
         WindowGroup {
             ContentView(state: state)
                 .frame(minWidth: 800, minHeight: 600)
+                .onOpenURL { url in
+                    state.openDocument(at: url)
+                }
         }
         .commands {
             // File menu
