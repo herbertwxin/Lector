@@ -52,24 +52,17 @@ struct LectorApp: App {
 }
 
 // MARK: - AppDelegate
+// Note: application(_:open:) is intentionally NOT implemented here.
+// When a custom delegate overrides that method, it intercepts the event and
+// SwiftUI's .onOpenURL modifier never fires. Removing it lets SwiftUI route
+// file-open events directly to .onOpenURL on the WindowGroup.
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func application(_ application: NSApplication, open urls: [URL]) {
-        // Handle file open via Finder or command-line
-        // The main window's AppState will pick this up via notification
-        NotificationCenter.default.post(name: .lectorOpenURL, object: urls.first)
-    }
-
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Activate the app window
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
-}
-
-extension Notification.Name {
-    static let lectorOpenURL = Notification.Name("lectorOpenURL")
 }
