@@ -12,7 +12,12 @@ struct LectorApp: App {
         WindowGroup {
             ContentView(state: state)
                 .frame(minWidth: 800, minHeight: 600)
-                .onOpenURL { url in
+                // AppDelegate implements application(_:open:) and posts
+                // lectorHandleURL for both launch-time and already-running opens.
+                // onOpenURL is NOT used because it is unreliable once the app is
+                // already running (Finder routes through application(_:open:) then).
+                .onReceive(NotificationCenter.default.publisher(for: .lectorHandleURL)) { note in
+                    guard let url = note.userInfo?["url"] as? URL else { return }
                     state.openDocument(at: url)
                 }
                 .onDisappear {
@@ -21,7 +26,6 @@ struct LectorApp: App {
                     state.closeDocument()
                 }
         }
-        .windowToolbarStyle(.unifiedCompact(showsTitle: true))
         .commands {
             LectorCommands()
         }
@@ -69,10 +73,6 @@ struct LectorCommands: Commands {
 }
 
 // MARK: - AppDelegate
-// Note: application(_:open:) is intentionally NOT implemented here.
-// When a custom delegate overrides that method, it intercepts the event and
-// SwiftUI's .onOpenURL modifier never fires. Removing it lets SwiftUI route
-// file-open events directly to .onOpenURL on the WindowGroup.
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     // Keep the app alive when the window is closed (red button).
@@ -101,10 +101,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    // Called by macOS both at launch (with files passed on the command line /
+    // double-clicked before the app started) and while already running (Finder
+    // double-click, drag-onto-Dock, "Open With…", etc.).  We post lectorHandleURL
+    // so the primary WindowGroup window can route it through AppState, which
+    // applies the documentOpenBehavior preference (current / tab / window).
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            NotificationCenter.default.post(
+                name: .lectorHandleURL,
+                object: nil,
+                userInfo: ["url": url]
+            )
+        }
+    }
+
     // MARK: - Multi-window / tab support
 
     @objc private func handleOpenNewWindow(_ notification: Notification) {
-        guard let url  = notification.userInfo?["url"]   as? URL,
+        guard let url   = notification.userInfo?["url"]   as? URL,
               let asTab = notification.userInfo?["asTab"] as? Bool else { return }
         openDocumentWindow(url: url, asTab: asTab)
     }
