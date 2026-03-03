@@ -36,6 +36,15 @@ jobs:
           cp -R "${{ runner.temp }}/Lector.xcarchive/Products/Applications/Lector.app" \
                 "${{ runner.temp }}/Lector.app"
 
+      - name: Ad-hoc sign the app
+        # Without a valid signature macOS flags the downloaded app as "damaged".
+        # Ad-hoc signing (-) produces a valid signature accepted by Gatekeeper;
+        # users will see "unidentified developer" (bypassable via right-click > Open)
+        # rather than the unbypassable "damaged" error.
+        run: |
+          codesign --deep --force --sign - \
+            "${{ runner.temp }}/Lector.app"
+
       - name: Create DMG
         run: |
           DMG_DIR="${{ runner.temp }}/dmg-contents"
