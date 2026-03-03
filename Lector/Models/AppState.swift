@@ -3,6 +3,23 @@ import AppKit
 import PDFKit
 import Observation
 
+// MARK: - AppearanceMode
+
+enum AppearanceMode: String, CaseIterable {
+    case auto  = "Auto"
+    case light = "Light"
+    case dark  = "Dark"
+
+    /// The SwiftUI ColorScheme override, or nil to follow the system.
+    var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .auto:  return nil
+        case .light: return .light
+        case .dark:  return .dark
+        }
+    }
+}
+
 // MARK: - ViewerMode
 
 enum ViewerMode: Equatable {
@@ -32,8 +49,18 @@ final class AppState {
 
     // MARK: Mode & UI
     var mode: ViewerMode = .normal
-    var isDarkMode: Bool = false
+    var appearanceMode: AppearanceMode = .auto
     var showTOC: Bool = false
+
+    /// True when the effective appearance is dark (used by PDFView / AnnotationLayer).
+    var isDarkMode: Bool {
+        switch appearanceMode {
+        case .dark:  return true
+        case .light: return false
+        case .auto:
+            return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
+    }
     var numberPrefix: String = ""
     var statusMessage: String = ""
 
@@ -287,7 +314,11 @@ final class AppState {
         case .openDocument:
             openDocumentDialog()
         case .toggleDarkMode:
-            isDarkMode.toggle()
+            switch appearanceMode {
+            case .auto:  appearanceMode = .dark
+            case .dark:  appearanceMode = .light
+            case .light: appearanceMode = .auto
+            }
         case .quit:
             NSApplication.shared.terminate(nil)
         }
@@ -306,11 +337,13 @@ final class AppState {
 
         // ── Appearance ──────────────────────────────────────────────────
         case "dark", "darkmode":
-            isDarkMode = true
+            appearanceMode = .dark
         case "light", "lightmode":
-            isDarkMode = false
+            appearanceMode = .light
+        case "auto", "automode", "system":
+            appearanceMode = .auto
         case "toggledark", "toggledarkmode":
-            isDarkMode.toggle()
+            execute(.toggleDarkMode)
 
         // ── Navigation ──────────────────────────────────────────────────
         case "page", "p":

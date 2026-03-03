@@ -274,10 +274,12 @@ final class LectorPDFView: PDFView {
             document?.cancelFindString()
         }
 
-        // Dark mode appearance
-        appearance = state.isDarkMode
-            ? NSAppearance(named: .darkAqua)
-            : NSAppearance(named: .aqua)
+        // Appearance — nil lets the view inherit from the window (respects auto/system)
+        switch state.appearanceMode {
+        case .dark:  appearance = NSAppearance(named: .darkAqua)
+        case .light: appearance = NSAppearance(named: .aqua)
+        case .auto:  appearance = nil
+        }
     }
 
     // MARK: - Key events passed to AppState

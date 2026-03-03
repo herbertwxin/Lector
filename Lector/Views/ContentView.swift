@@ -45,7 +45,7 @@ struct ContentView: View {
             QuickSelectPanel(state: state)
                 .frame(minWidth: 500, minHeight: 400)
         }
-        .preferredColorScheme(state.isDarkMode ? .dark : nil)
+        .preferredColorScheme(state.appearanceMode.preferredColorScheme)
         .focusedValue(\.appState, state)
     }
 }

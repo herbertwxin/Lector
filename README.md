@@ -19,17 +19,17 @@ open Lector.xcodeproj   # then ⌘B
 ### Navigation
 | Key | Action |
 |-----|--------|
-| `j` | Scroll down |
-| `k` | Scroll up |
-| `⌃d` | Scroll down (half page) |
-| `⌃u` | Scroll up (half page) |
+| `j` / `↓` | Scroll down |
+| `k` / `↑` | Scroll up |
+| `⌃d` | Scroll down (large step) |
+| `⌃u` | Scroll up (large step) |
 | `Space` | Next page |
 | `Shift+Space` | Previous page |
 | `gg` | Go to beginning |
 | `G` | Go to end |
-| `{n}gg` | Go to page n |
-| `Backspace` | Navigate back |
-| `Shift+Backspace` | Navigate forward |
+| `{n}gg` | Go to page n (e.g. `42gg`) |
+| `⌫` | Navigate back |
+| `Shift+⌫` | Navigate forward |
 
 ### Zoom
 | Key | Action |
@@ -37,7 +37,7 @@ open Lector.xcodeproj   # then ⌘B
 | `+` | Zoom in |
 | `-` | Zoom out |
 | `=` | Fit to width |
-| `0` | Actual size |
+| `0` | Actual size (100%) |
 
 ### Search
 | Key | Action |
@@ -58,7 +58,7 @@ open Lector.xcodeproj   # then ⌘B
 ### Highlights
 | Key | Action |
 |-----|--------|
-| `h` + char | Highlight selection (`a` = yellow, `b` = green, `c` = blue, `d` = red) |
+| `h` + char | Highlight selection — `a` yellow · `b` green · `c` blue · `d` red |
 | `dh` | Delete highlight at current position |
 | `gh` | List highlights |
 | `gnh` | Jump to next highlight |
@@ -67,15 +67,15 @@ open Lector.xcodeproj   # then ⌘B
 ### Marks
 | Key | Action |
 |-----|--------|
-| `m` + char | Set local mark (lowercase = per-document, uppercase = global) |
+| `m` + char | Set mark — lowercase = per-document, uppercase = global across docs |
 | `` ` `` + char | Jump to mark |
 | `gm` | List marks |
 
 ### Portals
 | Key | Action |
 |-----|--------|
-| `p` | Set portal source (press once), then navigate and press again to create |
-| `dp` | Delete portal at current position |
+| `p` | First press: set source · Second press: create portal to current location |
+| `dp` | Delete portal nearest to current position |
 
 ### Web Search
 | Key | Action |
@@ -87,17 +87,102 @@ open Lector.xcodeproj   # then ⌘B
 | Key | Action |
 |-----|--------|
 | `t` | Toggle table of contents |
-| `:` | Command mode (e.g. `:dark`, `:page 42`, `:quit`) |
-| `o` | Open document |
-| `F8` | Toggle dark mode |
+| `:` | Open command mode |
+| `o` | Open document picker |
+| `F8` | Cycle appearance: Auto → Dark → Light → Auto |
 | `q` | Quit |
 
-### Command Mode (`:`)
+---
+
+## Command Mode (`:`)
+
+Press `:` to enter command mode, type a command, press `Enter`.
+
+### Appearance
 | Command | Action |
 |---------|--------|
-| `:dark` | Enable dark mode |
-| `:light` | Enable light mode |
+| `:dark` | Force dark mode |
+| `:light` | Force light mode |
+| `:auto` / `:system` | Follow system appearance (default) |
+| `:toggledark` | Cycle Auto → Dark → Light |
+
+### Navigation
+| Command | Action |
+|---------|--------|
+| `:page 42` | Jump to page 42 |
+| `:beginning` | Go to first page |
+| `:end` | Go to last page |
+| `:nextpage` | Next page |
+| `:prevpage` | Previous page |
+| `:back` | Navigate back in history |
+| `:forward` | Navigate forward in history |
+| `:nextchapter` | Jump to next outline chapter |
+| `:prevchapter` | Jump to previous outline chapter |
+
+### Zoom
+| Command | Action |
+|---------|--------|
+| `:zoom 150` | Set zoom to 150% |
+| `:zoomin` | Zoom in |
+| `:zoomout` | Zoom out |
+| `:fit` / `:fitwidth` | Fit to width |
+| `:actualsize` | Reset to 100% |
+
+### Search
+| Command | Action |
+|---------|--------|
+| `:search keyword` | Search for keyword |
+| `:next` | Next search result |
+| `:prev` | Previous search result |
+
+### Bookmarks
+| Command | Action |
+|---------|--------|
+| `:bookmark` | Add bookmark (auto-labelled) |
+| `:bookmark My note` | Add bookmark with custom label |
+| `:deletebookmark` | Delete bookmark at current position |
+| `:bookmarks` | Show bookmarks panel |
+| `:allbookmarks` | Show bookmarks across all documents |
+
+### Highlights
+| Command | Action |
+|---------|--------|
+| `:highlight a` | Highlight selection (a/b/c/d → yellow/green/blue/red) |
+| `:deletehighlight` | Delete highlight at current position |
+| `:highlights` | Show highlights panel |
+| `:nexthighlight` | Jump to next highlight |
+| `:prevhighlight` | Jump to previous highlight |
+
+### Marks
+| Command | Action |
+|---------|--------|
+| `:mark a` | Set mark 'a' at current position |
+| `:goto a` | Jump to mark 'a' |
+| `:marks` | Show marks panel |
+
+### Portals
+| Command | Action |
+|---------|--------|
+| `:portal` | Set portal source / create portal |
+| `:deleteportal` | Delete nearest portal |
+| `:gotoportal` | Jump to nearest portal destination |
+
+### Web Search
+| Command | Action |
+|---------|--------|
+| `:scholar deep learning` | Search phrase on Google Scholar |
+| `:scholar` | Search current selection on Google Scholar |
+| `:google gradient descent` | Search phrase on Google |
+| `:google` | Search current selection on Google |
+
+### Misc
+| Command | Action |
+|---------|--------|
+| `:copy` | Copy selected text to clipboard |
+| `:rotate` | Rotate all pages 90° clockwise |
+| `:rotate ccw` | Rotate all pages 90° counter-clockwise |
+| `:fullscreen` | Toggle full screen |
 | `:toc` | Toggle table of contents |
-| `:page {n}` | Go to page n |
-| `:open` | Open document picker |
+| `:open` / `:o` | Open document picker |
+| `:recent` | Show recent documents panel |
 | `:quit` / `:q` | Quit |

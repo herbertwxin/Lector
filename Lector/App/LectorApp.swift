@@ -36,11 +36,8 @@ struct LectorApp: App {
                 Button("Toggle Table of Contents") { state.showTOC.toggle() }
                     .keyboardShortcut("t", modifiers: .command)
 
-                Toggle("Dark Mode", isOn: Binding(
-                    get: { state.isDarkMode },
-                    set: { state.isDarkMode = $0 }
-                ))
-                .keyboardShortcut("d", modifiers: [.command, .shift])
+                Button("Toggle Appearance (Auto/Dark/Light)") { state.execute(.toggleDarkMode) }
+                    .keyboardShortcut("d", modifiers: [.command, .shift])
             }
         }
 

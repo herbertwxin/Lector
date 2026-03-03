@@ -10,7 +10,12 @@ struct PreferencesView: View {
     var body: some View {
         Form {
             Section("Appearance") {
-                Toggle("Dark Mode", isOn: $state.isDarkMode)
+                Picker("Color Scheme", selection: $state.appearanceMode) {
+                    ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
             }
 
             Section("Scroll") {
