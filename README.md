@@ -1,5 +1,5 @@
 # Lector
-A MacOS native academic PDF reader derived from Sioyek.
+A MacOS native academic PDF reader derived from Sioyek(https://github.com/ahrm/sioyek)
 
 ## Requirements
 - macOS 14.0 (Sonoma) or later
