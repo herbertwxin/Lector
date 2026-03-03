@@ -46,8 +46,11 @@ final class KeyTrie {
 
     // MARK: Event Handling
 
-    /// Process a key event; returns zero or more commands to execute.
-    func handleKey(event: NSEvent) -> [Command] {
+    /// Process a key event.
+    /// Returns nil if the event was not consumed (caller may beep/pass through).
+    /// Returns [] if consumed but no command yet (digit prefix, trie prefix, awaiting char).
+    /// Returns [cmd…] when one or more commands are ready to execute.
+    func handleKey(event: NSEvent) -> [Command]? {
         let token = Self.token(from: event)
 
         // Awaiting a character argument (e.g. after `m`, `` ` ``, `h`)
@@ -93,9 +96,9 @@ final class KeyTrie {
                 }
                 pendingNodes = [child]
                 scheduleReset()
-                return []
+                return []   // consumed: started a new trie sequence
             }
-            return []
+            return nil      // not consumed: unknown key, let caller beep
         }
 
         // Check for terminal matches

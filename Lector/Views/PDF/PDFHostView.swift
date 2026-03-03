@@ -14,6 +14,21 @@ struct PDFHostView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: PDFContainerView, context: Context) {
+        // Restore PDF focus whenever we return to normal mode from command/search.
+        // This runs every time AppState changes, so we gate it on a transition flag.
+        switch state.mode {
+        case .command, .search:
+            context.coordinator.wasInInputMode = true
+        case .normal:
+            if context.coordinator.wasInInputMode {
+                context.coordinator.wasInInputMode = false
+                DispatchQueue.main.async {
+                    container.window?.makeFirstResponder(container.pdfView)
+                }
+            }
+        default:
+            break
+        }
         container.update(state: state)
     }
 
@@ -25,6 +40,7 @@ struct PDFHostView: NSViewRepresentable {
 
     final class Coordinator: NSObject {
         let state: AppState
+        var wasInInputMode = false
         init(state: AppState) { self.state = state }
     }
 }
@@ -55,6 +71,17 @@ final class PDFContainerView: NSView {
         super.layout()
         pdfView.frame = bounds
         annotationLayer.frame = bounds
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        // Give the PDF view first-responder status as soon as we join a window.
+        // The async hop lets SwiftUI finish its layout pass first.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window != nil else { return }
+            self.window?.makeFirstResponder(self.pdfView)
+        }
     }
 
     func update(state: AppState) {
@@ -124,6 +151,18 @@ final class PDFContainerView: NSView {
             name: .lectorRotate,
             object: nil
         )
+
+        // Focus PDF view (e.g. after command/search mode exits)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(focusPDF),
+            name: .lectorFocusPDF,
+            object: nil
+        )
+    }
+
+    @objc private func focusPDF() {
+        window?.makeFirstResponder(pdfView)
     }
 
     @objc private func refreshAnnotations() {

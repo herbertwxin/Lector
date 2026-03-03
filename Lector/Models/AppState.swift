@@ -190,6 +190,7 @@ final class AppState {
             if event.keyCode == 53 { // Escape
                 mode = .normal
                 isSearching = false
+                NotificationCenter.default.post(name: .lectorFocusPDF, object: nil)
                 return true
             }
             return false
@@ -197,12 +198,8 @@ final class AppState {
             break
         }
 
-        let commands = keyTrie.handleKey(event: event)
-        guard !commands.isEmpty else { return false }
-
-        for command in commands {
-            execute(command)
-        }
+        guard let commands = keyTrie.handleKey(event: event) else { return false }
+        for command in commands { execute(command) }
         return true
     }
 
@@ -473,6 +470,9 @@ final class AppState {
         case "quit", "q":
             NSApplication.shared.terminate(nil)
 
+        case "help", "?":
+            showHelpPanel()
+
         default:
             statusMessage = "Unknown command: \(name)"
         }
@@ -535,6 +535,69 @@ final class AppState {
             }
             collectOutlinePages(node: child, doc: doc, into: &pages)
         }
+    }
+
+    // ── Help quick-select ─────────────────────────────────────────────────
+
+    private func showHelpPanel() {
+        let entries: [(keys: String, desc: String)] = [
+            // Navigation
+            ("j / ↓",         "Scroll down"),
+            ("k / ↑",         "Scroll up"),
+            ("⌃d",            "Scroll down (large step)"),
+            ("⌃u",            "Scroll up (large step)"),
+            ("Space",         "Next page"),
+            ("Shift+Space",   "Previous page"),
+            ("gg",            "Go to beginning"),
+            ("G",             "Go to end"),
+            ("{n}gg",         "Go to page n  (e.g. 42gg)"),
+            ("⌫",             "Navigate back"),
+            ("Shift+⌫",       "Navigate forward"),
+            // Zoom
+            ("+",             "Zoom in"),
+            ("-",             "Zoom out"),
+            ("=",             "Fit to width"),
+            ("0",             "Actual size (100%)"),
+            // Search
+            ("/",             "Open search bar"),
+            ("n",             "Next search result"),
+            ("N",             "Previous search result"),
+            ("Esc",           "Close search"),
+            // Bookmarks
+            ("b",             "Add bookmark"),
+            ("db",            "Delete bookmark"),
+            ("gb",            "List bookmarks (this doc)"),
+            ("gB",            "List bookmarks (all docs)"),
+            // Highlights
+            ("h + a/b/c/d",   "Highlight: yellow/green/blue/red"),
+            ("dh",            "Delete highlight at current position"),
+            ("gh",            "List highlights"),
+            ("gnh",           "Jump to next highlight"),
+            ("gNh",           "Jump to previous highlight"),
+            // Marks
+            ("m + char",      "Set mark (lowercase = per-doc)"),
+            ("` + char",      "Jump to mark"),
+            ("gm",            "List marks"),
+            // Portals
+            ("p",             "Set portal source / create portal"),
+            ("dp",            "Delete nearest portal"),
+            // Web search
+            ("⌃f",            "Search selection on Google Scholar"),
+            ("⌥f",            "Search selection on Google"),
+            // UI
+            ("t",             "Toggle table of contents"),
+            (":",             "Open command mode"),
+            ("o",             "Open document picker"),
+            ("F8",            "Cycle appearance: Auto → Dark → Light"),
+            ("q",             "Quit"),
+        ]
+        let items: [QuickSelectItem] = entries.map { entry in
+            QuickSelectItemImpl(title: entry.keys, subtitle: entry.desc, page: 0,
+                                action: { [weak self] in self?.showQuickSelect = false })
+        }
+        quickSelectItems = items
+        quickSelectTitle = "Keyboard Shortcuts — type to filter"
+        showQuickSelect = true
     }
 
     // ── Recent docs quick-select ──────────────────────────────────────────
@@ -821,4 +884,5 @@ extension Notification.Name {
     static let lectorAnnotationsChanged = Notification.Name("lectorAnnotationsChanged")
     static let lectorCopySelection      = Notification.Name("lectorCopySelection")
     static let lectorRotate             = Notification.Name("lectorRotate")
+    static let lectorFocusPDF           = Notification.Name("lectorFocusPDF")
 }
