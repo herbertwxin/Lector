@@ -38,6 +38,12 @@ struct ContentView: View {
                 .animation(.easeInOut(duration: 0.15), value: state.isSearching)
             }
         }
+        // Remove the automatic sidebar-toggle button that NavigationSplitView
+        // injects into the window toolbar. Without this it appears as a blue
+        // accent-colour line in the title bar whenever the WelcomeView is shown
+        // (PDFHostView's .ignoresSafeArea() normally hides it by covering the
+        // toolbar area with the PDF canvas).
+        .toolbar(removing: .sidebarToggle)
         .onChange(of: state.showTOC) { _, newValue in
             withAnimation { columnVisibility = newValue ? .all : .detailOnly }
         }

@@ -192,6 +192,7 @@ final class AppState {
         portals     = []
         mode        = .normal
         isSearching = false
+        showTOC     = false
         statusMessage = ""
     }
 
