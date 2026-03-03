@@ -12,13 +12,14 @@ struct LectorApp: App {
         WindowGroup {
             ContentView(state: state)
                 .frame(minWidth: 800, minHeight: 600)
-                // AppDelegate implements application(_:open:) and posts
-                // lectorHandleURL for both launch-time and already-running opens.
-                // onOpenURL is NOT used because it is unreliable once the app is
-                // already running (Finder routes through application(_:open:) then).
-                .onReceive(NotificationCenter.default.publisher(for: .lectorHandleURL)) { note in
-                    guard let url = note.userInfo?["url"] as? URL else { return }
-                    state.openDocument(at: url)
+                .onAppear {
+                    // Give AppDelegate a direct path to the primary AppState so
+                    // application(_:open:) can route Finder opens without going
+                    // through a Combine/notification subscription that may not
+                    // be live at the moment the event arrives.
+                    appDelegate.openDocumentHandler = { url in
+                        state.openDocument(at: url)
+                    }
                 }
                 .onDisappear {
                     // Window was closed (red button). Save position and reset to
@@ -75,6 +76,10 @@ struct LectorCommands: Commands {
 // MARK: - AppDelegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Set by the primary WindowGroup view on appear. Called directly by
+    /// application(_:open:) so no Combine/notification subscription is needed.
+    var openDocumentHandler: ((URL) -> Void)?
+
     // Keep the app alive when the window is closed (red button).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
@@ -101,18 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    // Called by macOS both at launch (with files passed on the command line /
-    // double-clicked before the app started) and while already running (Finder
-    // double-click, drag-onto-Dock, "Open With…", etc.).  We post lectorHandleURL
-    // so the primary WindowGroup window can route it through AppState, which
-    // applies the documentOpenBehavior preference (current / tab / window).
+    // Called by macOS both at launch (double-clicked before app started) and
+    // while already running (Finder double-click, "Open With…", drag-onto-Dock).
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            NotificationCenter.default.post(
-                name: .lectorHandleURL,
-                object: nil,
-                userInfo: ["url": url]
-            )
+            openDocumentHandler?(url)
         }
     }
 

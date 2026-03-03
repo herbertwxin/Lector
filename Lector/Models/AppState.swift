@@ -960,5 +960,4 @@ extension Notification.Name {
     static let lectorRotate             = Notification.Name("lectorRotate")
     static let lectorFocusPDF           = Notification.Name("lectorFocusPDF")
     static let lectorOpenNewWindow      = Notification.Name("lectorOpenNewWindow")
-    static let lectorHandleURL          = Notification.Name("lectorHandleURL")
 }
