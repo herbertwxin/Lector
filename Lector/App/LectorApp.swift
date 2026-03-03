@@ -15,6 +15,11 @@ struct LectorApp: App {
                 .onOpenURL { url in
                     state.openDocument(at: url)
                 }
+                .onDisappear {
+                    // Window was closed (red button). Save position and reset to
+                    // home screen so re-opening the window starts fresh.
+                    state.closeDocument()
+                }
         }
         .commands {
             // File menu

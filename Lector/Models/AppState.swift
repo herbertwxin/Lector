@@ -179,6 +179,22 @@ final class AppState {
         )
     }
 
+    /// Called when the main window is closed. Saves position then shows the
+    /// home screen so the next window open starts fresh.
+    func closeDocument() {
+        saveCurrentPosition()
+        document    = nil
+        documentURL = nil
+        documentID  = 0
+        bookmarks   = []
+        highlights  = []
+        marks       = []
+        portals     = []
+        mode        = .normal
+        isSearching = false
+        statusMessage = ""
+    }
+
     func loadAnnotations() {
         guard documentID > 0 else { return }
         bookmarks  = (try? database.fetchBookmarks(docID: documentID)) ?? []
