@@ -94,12 +94,20 @@ final class AppState {
     var rememberLastPosition: Bool {
         didSet { UserDefaults.standard.set(rememberLastPosition, forKey: "rememberLastPosition") }
     }
+    /// "current" | "tab" | "window"
+    var documentOpenBehavior: String {
+        didSet { UserDefaults.standard.set(documentOpenBehavior, forKey: "documentOpenBehavior") }
+    }
 
     // MARK: Init
 
     init() {
-        UserDefaults.standard.register(defaults: ["rememberLastPosition": true])
-        rememberLastPosition = UserDefaults.standard.bool(forKey: "rememberLastPosition")
+        UserDefaults.standard.register(defaults: [
+            "rememberLastPosition": true,
+            "documentOpenBehavior": "current",
+        ])
+        rememberLastPosition    = UserDefaults.standard.bool(forKey: "rememberLastPosition")
+        documentOpenBehavior    = UserDefaults.standard.string(forKey: "documentOpenBehavior") ?? "current"
         do {
             database = try Database()
         } catch {
@@ -137,6 +145,18 @@ final class AppState {
             statusMessage = "Failed to open: \(url.lastPathComponent)"
             return
         }
+
+        // If a document is already open and the preference is for a new
+        // tab or window, delegate to AppDelegate via notification.
+        if document != nil, documentOpenBehavior != "current" {
+            NotificationCenter.default.post(
+                name: .lectorOpenNewWindow,
+                object: nil,
+                userInfo: ["url": url, "asTab": documentOpenBehavior == "tab"]
+            )
+            return
+        }
+
         // Save position of whatever was open before switching.
         saveCurrentPosition()
 
@@ -939,4 +959,5 @@ extension Notification.Name {
     static let lectorCopySelection      = Notification.Name("lectorCopySelection")
     static let lectorRotate             = Notification.Name("lectorRotate")
     static let lectorFocusPDF           = Notification.Name("lectorFocusPDF")
+    static let lectorOpenNewWindow      = Notification.Name("lectorOpenNewWindow")
 }
