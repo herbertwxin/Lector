@@ -1,0 +1,474 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		007FA165F4329F267CEEA55A /* KeyTrie.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5184C61F86AA21587B2C1E17 /* KeyTrie.swift */; };
+		0AB7E09CFB70A6C6216665EC /* DefaultBindings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13CD0616BEEBDC4FFEA81C6B /* DefaultBindings.swift */; };
+		0ED3F64DC05F71E1254DE7FB /* Checksum.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD6BA22D69348FA63F1F524D /* Checksum.swift */; };
+		240CF27417EF244336F15F15 /* Command.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D310858DFF18AB330392D6C /* Command.swift */; };
+		2B0B35ACA47B411037EE4FB3 /* PDFHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A83A02AFB5D9D5DC7FFF8F8 /* PDFHostView.swift */; };
+		36CC4A372B4D63EB65D22B1E /* StatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3C5A1E0BF6A3CE5143F997 /* StatusBar.swift */; };
+		3A2808565F5B2BB36040CEAF /* TOCView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300D327CD1A8AF24F2476D2D /* TOCView.swift */; };
+		4C18622204628D0568953E1C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2C56138772ADBDCFFCCB81 /* ContentView.swift */; };
+		5CF2053F10943178AD997CCA /* LectorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E82AD00B8CFE50A976E1A651 /* LectorApp.swift */; };
+		7FA481CB53EC29618B2D1504 /* Annotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20905020ECB07D0C89D47A04 /* Annotation.swift */; };
+		827042F334A9260AC90BFD1C /* NavHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E1504051DB602B86292CBC /* NavHistory.swift */; };
+		94F9F5821CB7C0DE9CA7C8F8 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E843BC9A5F7B2A9BE1F7EEF /* AppState.swift */; };
+		A1B1990545D9A037C4D5B00B /* AnnotationLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F487A41DBAE2A35EB68F43 /* AnnotationLayer.swift */; };
+		A7248770F07145C7ADB78A4E /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19582E7FD539FC82FB9D5421 /* PreferencesView.swift */; };
+		BE6CEA00E67483353C6D3F82 /* Database.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444B71B8D025036D7CF2F916 /* Database.swift */; };
+		D02EAFBDDCCB6052AD2188AE /* CommandPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2DD0E7402BFFFFF779642D /* CommandPanel.swift */; };
+		E505B99A56D416080573D4B4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3CFE36B2F1C1AD3B8271732D /* Assets.xcassets */; };
+		EA0BFCAACCAD893D93A9271E /* QuickSelectPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F26987FF28961BD2B35AC4C /* QuickSelectPanel.swift */; };
+		ECB82961F8EEEABCAB2B4CEE /* SearchPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D5DEE81C38934098F3B593 /* SearchPanel.swift */; };
+		ED11DAD98C6178B9CBA96B06 /* PDFKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 748A3F90ABCBB0D7904F68EA /* PDFKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0B2C56138772ADBDCFFCCB81 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		12CE80E5612D4E818D7D3936 /* Lector.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lector.entitlements; sourceTree = "<group>"; };
+		13CD0616BEEBDC4FFEA81C6B /* DefaultBindings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultBindings.swift; sourceTree = "<group>"; };
+		19582E7FD539FC82FB9D5421 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
+		1E843BC9A5F7B2A9BE1F7EEF /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		20905020ECB07D0C89D47A04 /* Annotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Annotation.swift; sourceTree = "<group>"; };
+		300D327CD1A8AF24F2476D2D /* TOCView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOCView.swift; sourceTree = "<group>"; };
+		3CFE36B2F1C1AD3B8271732D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3D310858DFF18AB330392D6C /* Command.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Command.swift; sourceTree = "<group>"; };
+		43F487A41DBAE2A35EB68F43 /* AnnotationLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationLayer.swift; sourceTree = "<group>"; };
+		444B71B8D025036D7CF2F916 /* Database.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Database.swift; sourceTree = "<group>"; };
+		453731F83B6920FDCB825F46 /* Lector.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lector.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A83A02AFB5D9D5DC7FFF8F8 /* PDFHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFHostView.swift; sourceTree = "<group>"; };
+		4F26987FF28961BD2B35AC4C /* QuickSelectPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSelectPanel.swift; sourceTree = "<group>"; };
+		5184C61F86AA21587B2C1E17 /* KeyTrie.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTrie.swift; sourceTree = "<group>"; };
+		748A3F90ABCBB0D7904F68EA /* PDFKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PDFKit.framework; path = System/Library/Frameworks/PDFKit.framework; sourceTree = SDKROOT; };
+		8C2DD0E7402BFFFFF779642D /* CommandPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPanel.swift; sourceTree = "<group>"; };
+		95D5DEE81C38934098F3B593 /* SearchPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchPanel.swift; sourceTree = "<group>"; };
+		B5E1504051DB602B86292CBC /* NavHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavHistory.swift; sourceTree = "<group>"; };
+		BD3C5A1E0BF6A3CE5143F997 /* StatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBar.swift; sourceTree = "<group>"; };
+		E82AD00B8CFE50A976E1A651 /* LectorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LectorApp.swift; sourceTree = "<group>"; };
+		FD6BA22D69348FA63F1F524D /* Checksum.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Checksum.swift; sourceTree = "<group>"; };
+		FD6EA7ED1ACDEA1F6EFF6E9A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C0E17D74B43DE536D24965E6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ED11DAD98C6178B9CBA96B06 /* PDFKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		205448043D6979EB2258B306 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				0B2C56138772ADBDCFFCCB81 /* ContentView.swift */,
+				A1EB16FC0D6395C565B58CE6 /* Panels */,
+				9B2864AD2ECCED4F89DF9C0D /* PDF */,
+				B64D0DB78E7A496EE6915B0F /* Settings */,
+				3400DADF68D0121D2C475ACA /* Sidebar */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		3400DADF68D0121D2C475ACA /* Sidebar */ = {
+			isa = PBXGroup;
+			children = (
+				300D327CD1A8AF24F2476D2D /* TOCView.swift */,
+			);
+			path = Sidebar;
+			sourceTree = "<group>";
+		};
+		425A1579EAC59A4FB78DD3BF /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				3CFE36B2F1C1AD3B8271732D /* Assets.xcassets */,
+				FD6EA7ED1ACDEA1F6EFF6E9A /* Info.plist */,
+				12CE80E5612D4E818D7D3936 /* Lector.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		6F509DF049560D5D76B67CF7 /* Input */ = {
+			isa = PBXGroup;
+			children = (
+				3D310858DFF18AB330392D6C /* Command.swift */,
+				13CD0616BEEBDC4FFEA81C6B /* DefaultBindings.swift */,
+				5184C61F86AA21587B2C1E17 /* KeyTrie.swift */,
+			);
+			path = Input;
+			sourceTree = "<group>";
+		};
+		7751DF79A78F799CCE9C3B2F /* App */ = {
+			isa = PBXGroup;
+			children = (
+				E82AD00B8CFE50A976E1A651 /* LectorApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		86324BDC74C927298891508A /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				FD6BA22D69348FA63F1F524D /* Checksum.swift */,
+				444B71B8D025036D7CF2F916 /* Database.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		8E7D336A31D3200CAEA42D01 = {
+			isa = PBXGroup;
+			children = (
+				E151CD8A0ABFD5A88857C6B1 /* Lector */,
+				8F67915CF54673C91F2F2EA3 /* Frameworks */,
+				C5D7833206BB10F5A1B270F3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8F67915CF54673C91F2F2EA3 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				748A3F90ABCBB0D7904F68EA /* PDFKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		9B2864AD2ECCED4F89DF9C0D /* PDF */ = {
+			isa = PBXGroup;
+			children = (
+				43F487A41DBAE2A35EB68F43 /* AnnotationLayer.swift */,
+				4A83A02AFB5D9D5DC7FFF8F8 /* PDFHostView.swift */,
+			);
+			path = PDF;
+			sourceTree = "<group>";
+		};
+		9C7FEB5D8C527F287130C8CD /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				20905020ECB07D0C89D47A04 /* Annotation.swift */,
+				1E843BC9A5F7B2A9BE1F7EEF /* AppState.swift */,
+				B5E1504051DB602B86292CBC /* NavHistory.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A1EB16FC0D6395C565B58CE6 /* Panels */ = {
+			isa = PBXGroup;
+			children = (
+				8C2DD0E7402BFFFFF779642D /* CommandPanel.swift */,
+				4F26987FF28961BD2B35AC4C /* QuickSelectPanel.swift */,
+				95D5DEE81C38934098F3B593 /* SearchPanel.swift */,
+				BD3C5A1E0BF6A3CE5143F997 /* StatusBar.swift */,
+			);
+			path = Panels;
+			sourceTree = "<group>";
+		};
+		B64D0DB78E7A496EE6915B0F /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				19582E7FD539FC82FB9D5421 /* PreferencesView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		C5D7833206BB10F5A1B270F3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				453731F83B6920FDCB825F46 /* Lector.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E151CD8A0ABFD5A88857C6B1 /* Lector */ = {
+			isa = PBXGroup;
+			children = (
+				7751DF79A78F799CCE9C3B2F /* App */,
+				6F509DF049560D5D76B67CF7 /* Input */,
+				9C7FEB5D8C527F287130C8CD /* Models */,
+				425A1579EAC59A4FB78DD3BF /* Resources */,
+				86324BDC74C927298891508A /* Services */,
+				205448043D6979EB2258B306 /* Views */,
+			);
+			path = Lector;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0D7B55CAC73A4DDC38A6D5B1 /* Lector */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4D43E80AEC1EE6A090E98A84 /* Build configuration list for PBXNativeTarget "Lector" */;
+			buildPhases = (
+				3B5B707AC7FB718F52211136 /* Sources */,
+				7377FC7CA9F9F735F156CF71 /* Resources */,
+				C0E17D74B43DE536D24965E6 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Lector;
+			packageProductDependencies = (
+			);
+			productName = Lector;
+			productReference = 453731F83B6920FDCB825F46 /* Lector.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		67C46523526AF823E31105D0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+			};
+			buildConfigurationList = F27A987669A26CDC74208A51 /* Build configuration list for PBXProject "Lector" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 8E7D336A31D3200CAEA42D01;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0D7B55CAC73A4DDC38A6D5B1 /* Lector */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7377FC7CA9F9F735F156CF71 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E505B99A56D416080573D4B4 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3B5B707AC7FB718F52211136 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7FA481CB53EC29618B2D1504 /* Annotation.swift in Sources */,
+				A1B1990545D9A037C4D5B00B /* AnnotationLayer.swift in Sources */,
+				94F9F5821CB7C0DE9CA7C8F8 /* AppState.swift in Sources */,
+				0ED3F64DC05F71E1254DE7FB /* Checksum.swift in Sources */,
+				240CF27417EF244336F15F15 /* Command.swift in Sources */,
+				D02EAFBDDCCB6052AD2188AE /* CommandPanel.swift in Sources */,
+				4C18622204628D0568953E1C /* ContentView.swift in Sources */,
+				BE6CEA00E67483353C6D3F82 /* Database.swift in Sources */,
+				0AB7E09CFB70A6C6216665EC /* DefaultBindings.swift in Sources */,
+				007FA165F4329F267CEEA55A /* KeyTrie.swift in Sources */,
+				5CF2053F10943178AD997CCA /* LectorApp.swift in Sources */,
+				827042F334A9260AC90BFD1C /* NavHistory.swift in Sources */,
+				2B0B35ACA47B411037EE4FB3 /* PDFHostView.swift in Sources */,
+				A7248770F07145C7ADB78A4E /* PreferencesView.swift in Sources */,
+				EA0BFCAACCAD893D93A9271E /* QuickSelectPanel.swift in Sources */,
+				ECB82961F8EEEABCAB2B4CEE /* SearchPanel.swift in Sources */,
+				36CC4A372B4D63EB65D22B1E /* StatusBar.swift in Sources */,
+				3A2808565F5B2BB36040CEAF /* TOCView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		21AB54609E0B7341B4FB12C8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		841455978E42DF70887CD8CD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Lector/Resources/Lector.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Lector/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lector.app;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		85B47DBD043EF466B9A708A8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Lector/Resources/Lector.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Lector/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lector.app;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		F89BDCEDCCE8B780C8BD6B05 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4D43E80AEC1EE6A090E98A84 /* Build configuration list for PBXNativeTarget "Lector" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				841455978E42DF70887CD8CD /* Debug */,
+				85B47DBD043EF466B9A708A8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F27A987669A26CDC74208A51 /* Build configuration list for PBXProject "Lector" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				21AB54609E0B7341B4FB12C8 /* Debug */,
+				F89BDCEDCCE8B780C8BD6B05 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 67C46523526AF823E31105D0 /* Project object */;
+}

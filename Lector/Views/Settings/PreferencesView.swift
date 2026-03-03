@@ -1,0 +1,51 @@
+import SwiftUI
+
+// MARK: - PreferencesView
+
+struct PreferencesView: View {
+    @Bindable var state: AppState
+    @AppStorage("scrollStep") private var scrollStep: Double = 60
+    @AppStorage("largeScrollStep") private var largeScrollStep: Double = 300
+
+    var body: some View {
+        Form {
+            Section("Appearance") {
+                Toggle("Dark Mode", isOn: $state.isDarkMode)
+            }
+
+            Section("Scroll") {
+                LabeledContent("Scroll Step (pt)") {
+                    Slider(value: $scrollStep, in: 20...200, step: 10)
+                    Text("\(Int(scrollStep))")
+                        .frame(width: 36, alignment: .trailing)
+                }
+                LabeledContent("Large Scroll Step (pt)") {
+                    Slider(value: $largeScrollStep, in: 100...800, step: 50)
+                    Text("\(Int(largeScrollStep))")
+                        .frame(width: 36, alignment: .trailing)
+                }
+            }
+
+            Section("Database") {
+                LabeledContent("Location") {
+                    let appSupport = FileManager.default.urls(
+                        for: .applicationSupportDirectory, in: .userDomainMask).first!
+                    let path = appSupport.appendingPathComponent("Lector/lector.db").path
+                    Text(path)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Section("About") {
+                LabeledContent("Version") {
+                    Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 450, height: 300)
+        .padding()
+    }
+}
