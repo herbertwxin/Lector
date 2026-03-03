@@ -37,10 +37,8 @@ jobs:
                 "${{ runner.temp }}/Lector.app"
 
       - name: Ad-hoc sign the app
-        # Without a valid signature macOS flags the downloaded app as "damaged".
-        # Ad-hoc signing (-) produces a valid signature accepted by Gatekeeper;
-        # users will see "unidentified developer" (bypassable via right-click > Open)
-        # rather than the unbypassable "damaged" error.
+        # Ad-hoc signing produces a valid signature so macOS shows
+        # "unidentified developer" (bypassable) instead of "damaged".
         run: |
           codesign --deep --force --sign - \
             "${{ runner.temp }}/Lector.app"
@@ -62,3 +60,35 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ runner.temp }}/Lector.dmg
+
+      - name: Update Homebrew tap
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          SHA=$(shasum -a 256 "${{ runner.temp }}/Lector.dmg" | awk '{print $1}')
+
+          git clone "https://x-access-token:${GH_PAT}@github.com/herbertwxin/homebrew-lector.git" /tmp/tap
+
+          # Update version and sha256 in the cask formula
+          cat > /tmp/update_cask.py << 'PYEOF'
+          import re, os
+          version = os.environ['CASK_VERSION']
+          sha     = os.environ['CASK_SHA']
+          path    = '/tmp/tap/Casks/lector.rb'
+          with open(path) as f:
+              content = f.read()
+          content = re.sub(r'version "[^"]*"', f'version "{version}"', content)
+          content = re.sub(r'sha256 "[^"]*"',  f'sha256 "{sha}"',     content)
+          with open(path, 'w') as f:
+              f.write(content)
+          PYEOF
+
+          CASK_VERSION="$VERSION" CASK_SHA="$SHA" python3 /tmp/update_cask.py
+
+          cd /tmp/tap
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git add Casks/lector.rb
+          git commit -m "Update Lector to ${VERSION}"
+          git push

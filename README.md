@@ -1,11 +1,30 @@
 # Lector
 A MacOS native academic PDF reader derived from Sioyek(https://github.com/ahrm/sioyek)
 
-## Requirements
+## Install
+
+### Homebrew (recommended)
+```bash
+brew tap herbertwxin/lector
+brew install --cask lector
+```
+
+To update when a new version is released:
+```bash
+brew upgrade --cask lector
+```
+
+### Manual
+Download `Lector.dmg` from [Releases](https://github.com/herbertwxin/Lector/releases), open it, and drag Lector to Applications.
+
+> **First launch:** right-click Lector.app → Open, then click Open in the dialog. This is a one-time step because the app is not yet notarized with Apple.
+
+## Build from source
+
+### Requirements
 - macOS 14.0 (Sonoma) or later
 - Xcode 15+
 
-## Build
 ```bash
 brew install xcodegen
 xcodegen generate
