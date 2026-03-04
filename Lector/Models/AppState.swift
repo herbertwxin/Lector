@@ -133,11 +133,17 @@ final class AppState {
         panel.message = "Select a PDF document"
         panel.prompt = "Open"
         if panel.runModal() == .OK, let url = panel.url {
-            openDocument(at: url)
+            if document == nil {
+                openDocument(at: url)
+            } else {
+                AppWindowManager.shared.openURL(url)
+            }
         }
     }
 
     func openDocument(at url: URL) {
+        if documentURL == url && document != nil { return }
+
         guard let doc = PDFDocument(url: url) else {
             statusMessage = "Failed to open: \(url.lastPathComponent)"
             return
@@ -682,7 +688,7 @@ final class AppState {
                 title: doc.url.lastPathComponent,
                 subtitle: doc.url.deletingLastPathComponent().path,
                 page: 0,
-                action: { [weak self] in self?.openDocument(at: doc.url) }
+                action: { AppWindowManager.shared.openURL(doc.url) }
             )
         }
         quickSelectItems = items

@@ -245,11 +245,16 @@ final class LectorPDFView: PDFView {
             if let url = state.documentURL {
                 let targetPage = state.currentPage
                 isLoadingDocument = true
+                lastPage = -1 // Reset lastPage for the new document
+                
                 document = PDFDocument(url: url)
-                // PDFs can embed an /OpenAction that causes PDFKit to navigate away from
-                // page 0 after document assignment (e.g., last-viewed page stored by Preview).
-                // Force navigation to the intended page after PDFKit finishes its setup,
-                // then re-enable pageChanged tracking.
+                
+                // Force initial page navigation after document is set.
+                // We do it both immediately and async to catch PDFKit in various states.
+                if let doc = document, let page = doc.page(at: targetPage) {
+                    go(to: page)
+                }
+                
                 DispatchQueue.main.async { [weak self] in
                     guard let self, let doc = self.document else {
                         self?.isLoadingDocument = false
@@ -264,6 +269,7 @@ final class LectorPDFView: PDFView {
                 }
             } else {
                 document = nil
+                lastPage = -1
             }
         }
 

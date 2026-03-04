@@ -6,21 +6,11 @@ import AppKit
 @main
 struct LectorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var state = AppState()
 
     var body: some Scene {
         WindowGroup {
-            ContentView(state: state)
+            WindowWrapper()
                 .frame(minWidth: 800, minHeight: 600)
-                .navigationTitle(state.documentURL?.deletingPathExtension().lastPathComponent ?? "")
-                .background(WindowAccessor { window in
-                    guard let window else { return }
-                    AppWindowManager.shared.register(window: window, state: state)
-                })
-                .onDisappear {
-                    AppWindowManager.shared.unregister(state: state)
-                    state.closeDocument()
-                }
         }
         .commands {
             LectorCommands()
@@ -28,8 +18,39 @@ struct LectorApp: App {
 
         // Settings window
         Settings {
-            PreferencesView(state: state)
+            PreferencesWrapper()
         }
+    }
+}
+
+// MARK: - Window Wrapper
+
+struct WindowWrapper: View {
+    @State private var state: AppState
+
+    init(state: AppState = AppState()) {
+        _state = State(wrappedValue: state)
+    }
+
+    var body: some View {
+        ContentView(state: state)
+            .frame(minWidth: 800, minHeight: 600)
+            .navigationTitle(state.documentURL?.deletingPathExtension().lastPathComponent ?? "")
+            .background(WindowAccessor { window in
+                guard let window else { return }
+                AppWindowManager.shared.register(window: window, state: state)
+            })
+            .onDisappear {
+                AppWindowManager.shared.unregister(state: state)
+                state.closeDocument()
+            }
+    }
+}
+
+struct PreferencesWrapper: View {
+    @State private var state = AppState()
+    var body: some View {
+        PreferencesView(state: state)
     }
 }
 
@@ -111,14 +132,27 @@ struct LectorCommands: Commands {
     var body: some Commands {
         // File menu
         CommandGroup(replacing: .newItem) {
-            Button("Open…") { state?.openDocumentDialog() }
-                .keyboardShortcut("o", modifiers: .command)
+            Button("Open…") {
+                if let state = state, state.document == nil {
+                    state.openDocumentDialog()
+                } else {
+                    // Current window occupied or no focused state -> use open panel then AppWindowManager
+                    let panel = NSOpenPanel()
+                    panel.allowsMultipleSelection = false
+                    panel.canChooseDirectories = false
+                    panel.canChooseFiles = true
+                    if panel.runModal() == .OK, let url = panel.url {
+                        AppWindowManager.shared.openURL(url)
+                    }
+                }
+            }
+            .keyboardShortcut("o", modifiers: .command)
 
             Menu("Open Recent") {
                 if let docs = state?.recentDocuments {
                     ForEach(Array(docs.prefix(10))) { doc in
                         Button(doc.url.lastPathComponent) {
-                            state?.openDocument(at: doc.url)
+                            AppWindowManager.shared.openURL(doc.url)
                         }
                     }
                 }
@@ -191,12 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let startY    = notification.userInfo?["yOffset"]   as? Double
 
         let newState = AppState(readOnly: readOnly)
-        let rootView = ContentView(state: newState)
-            .frame(minWidth: 800, minHeight: 600)
-            .onDisappear {
-                AppWindowManager.shared.unregister(state: newState)
-                newState.closeDocument()
-            }
+        let rootView = WindowWrapper(state: newState)
 
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
@@ -205,7 +234,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isRestorable = false
         window.center()
-        AppWindowManager.shared.register(window: window, state: newState)
+        
+        // WindowWrapper handles AppWindowManager registration via WindowAccessor.
+        
         window.makeKeyAndOrderFront(nil)
         newState.openDocument(at: url)
         if let page = startPage { newState.currentPage = page }

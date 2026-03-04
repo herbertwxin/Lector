@@ -124,7 +124,7 @@ struct WelcomeView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Recent").font(.headline)
                     ForEach(state.recentDocuments.prefix(5)) { doc in
-                        Button(action: { state.openDocument(at: doc.url) }) {
+                        Button(action: { AppWindowManager.shared.openURL(doc.url) }) {
                             Label(doc.url.lastPathComponent, systemImage: "doc.fill")
                                 .lineLimit(1)
                         }
