@@ -64,7 +64,6 @@ final class AppWindowManager {
         weak var state: AppState?
     }
     private var entries: [Entry] = []
-    private var pendingURLs: [URL] = []
     private init() {}
 
     func register(window: NSWindow, state: AppState) {
@@ -82,24 +81,6 @@ final class AppWindowManager {
             return
         }
 
-        // If the app was launched (or a URL was opened) before any window existed,
-        // pending URLs are queued here. Prefer to load the first pending URL into
-        // this brand-new, empty SwiftUI window instead of spawning an extra
-        // “home” window plus a separate document window.
-        if !pendingURLs.isEmpty {
-            var remaining = pendingURLs
-            pendingURLs = []
-
-            if state.document == nil, let first = remaining.first {
-                state.openDocument(at: first)
-                window.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-                remaining.removeFirst()
-            }
-
-            // Any additional URLs still get their own windows.
-            remaining.forEach { openURL($0) }
-        }
     }
 
     func unregister(state: AppState) {
@@ -108,9 +89,7 @@ final class AppWindowManager {
 
     func openURL(_ url: URL) {
         entries.removeAll { $0.window == nil || $0.state == nil }
-        guard !entries.isEmpty else { pendingURLs.append(url); return }
-
-        // Already open → bring to front
+        // If a window with this URL is already open, just bring it to front.
         if let entry = entries.first(where: { $0.state?.documentURL == url }),
            let win = entry.window {
             win.makeKeyAndOrderFront(nil)
@@ -118,14 +97,9 @@ final class AppWindowManager {
             return
         }
 
-        // Close any empty "home" windows so opening B/C doesn't leave
-        // extra home pages behind.
-        for entry in entries {
-            if entry.state?.document == nil, let win = entry.window {
-                win.close()
-            }
-        }
-        // Always create a new window for this URL when it is not already open.
+        // Otherwise, always create a new window for this URL, even if there are
+        // currently no registered windows (e.g. app running with all windows
+        // closed, or launched from Finder/Open With).
         NotificationCenter.default.post(
             name: .lectorOpenNewWindow,
             object: nil,
