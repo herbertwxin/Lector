@@ -200,6 +200,7 @@ final class LectorPDFView: PDFView {
     private var lastPage: Int = -1
     private var lastSearchText: String = ""
     private var isLoadingDocument = false
+    private var lastScrollUpdateTime: TimeInterval = 0
 
     init(state: AppState) {
         self.state = state
@@ -248,19 +249,22 @@ final class LectorPDFView: PDFView {
 
     @objc private func visiblePagesChanged(_ note: Notification) {
         guard !isLoadingDocument else { return }
-        guard let doc = document else { return }
+        guard let doc = document, let page = currentPage else { return }
 
-        let pages = visiblePages
-        guard let firstPage = pages.first else { return }
+        // Throttle updates to avoid excessive state churn while scrolling.
+        let now = Date().timeIntervalSince1970
+        if now - lastScrollUpdateTime < 0.05 { return } // ~20 Hz max
+        lastScrollUpdateTime = now
 
-        let pageIndex = doc.index(for: firstPage)
+        let pageIndex = doc.index(for: page)
         guard pageIndex >= 0, pageIndex < doc.pageCount else { return }
 
-        let page = firstPage
         let pageBounds = page.bounds(for: .mediaBox)
 
-        // Sample a point near the top center of the visible region and convert it into page coordinates.
-        let viewPoint = CGPoint(x: bounds.midX, y: bounds.maxY - 20)
+        // Use the vertical center of the visible rect as our anchor.
+        let visibleRect = documentView?.visibleRect ?? bounds
+        let anchorY = visibleRect.midY
+        let viewPoint = CGPoint(x: bounds.midX, y: anchorY)
         let pagePoint = convert(viewPoint, to: page)
 
         // Distance from the top of the page (consistent with AnnotationLayer's yOffset semantics).
@@ -270,39 +274,38 @@ final class LectorPDFView: PDFView {
         if offset > maxOffset { offset = maxOffset }
 
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.state?.currentPage = pageIndex
-            self.state?.scrollYOffset = offset
+            self?.state?.scrollYOffset = offset
         }
     }
 
     func update(state: AppState) {
-        // Document
-        if document?.documentURL != state.documentURL {
-            if let url = state.documentURL {
+        // Document: AppState is the single source of truth for PDFDocument.
+        if document !== state.document {
+            isLoadingDocument = true
+            lastPage = -1
+            lastScrollUpdateTime = 0
+            document = state.document
+
+            func goToTargetPosition() {
+                guard let doc = self.document,
+                      doc.pageCount > 0 else { return }
                 let targetPage = state.currentPage
                 let targetOffset = state.scrollYOffset
-                isLoadingDocument = true
-                lastPage = -1 // Reset lastPage for the new document
-                
-                document = PDFDocument(url: url)
-                
-                func goToTargetPosition() {
-                    guard let doc = self.document,
-                          doc.pageCount > 0 else { return }
-                    let clampedPage = max(0, min(targetPage, doc.pageCount - 1))
-                    guard let page = doc.page(at: clampedPage) else { return }
-                    let bounds = page.bounds(for: .mediaBox)
-                    let maxOffset = Double(bounds.height)
-                    var offset = targetOffset
-                    if offset < 0 { offset = 0 }
-                    if offset > maxOffset { offset = maxOffset }
-                    let point = CGPoint(x: bounds.minX, y: bounds.maxY - CGFloat(offset))
-                    let dest = PDFDestination(page: page, at: point)
-                    self.go(to: dest)
-                }
 
-                // Force initial navigation (page + vertical offset) after document is set.
+                let clampedPage = max(0, min(targetPage, doc.pageCount - 1))
+                guard let page = doc.page(at: clampedPage) else { return }
+                let bounds = page.bounds(for: .mediaBox)
+                let maxOffset = Double(bounds.height)
+                var offset = targetOffset
+                if offset < 0 { offset = 0 }
+                if offset > maxOffset { offset = maxOffset }
+                let point = CGPoint(x: bounds.minX, y: bounds.maxY - CGFloat(offset))
+                let dest = PDFDestination(page: page, at: point)
+                self.go(to: dest)
+            }
+
+            // If a document is present, navigate to the desired page/offset.
+            if state.document != nil {
                 goToTargetPosition()
 
                 DispatchQueue.main.async { [weak self] in
@@ -316,8 +319,7 @@ final class LectorPDFView: PDFView {
                     if let p = self.currentPage { self.lastPage = doc.index(for: p) }
                 }
             } else {
-                document = nil
-                lastPage = -1
+                isLoadingDocument = false
             }
         }
 
