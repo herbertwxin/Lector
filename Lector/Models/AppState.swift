@@ -87,10 +87,6 @@ final class AppState {
     // MARK: Services
     @ObservationIgnored let isReadOnly: Bool
 
-    // Counts how many AppState instances currently have a document open.
-    // Used to decide whether a Finder open should reuse the welcome-screen
-    // window or always spawn a new one.
-    private static var openDocumentCount = 0
     @ObservationIgnored let database: Database
     @ObservationIgnored private let navHistory = NavHistory()
     @ObservationIgnored private let keyTrie = KeyTrie()
@@ -147,18 +143,6 @@ final class AppState {
             return
         }
 
-        // If any window already has a document open, always use a new window.
-        // This prevents the welcome-screen window from being replaced when a
-        // secondary window is already showing a PDF.
-        if document != nil || AppState.openDocumentCount > 0 {
-            NotificationCenter.default.post(
-                name: .lectorOpenNewWindow,
-                object: nil,
-                userInfo: ["url": url]
-            )
-            return
-        }
-
         // Save position of whatever was open before switching.
         saveCurrentPosition()
 
@@ -168,7 +152,6 @@ final class AppState {
         }
         documentURL = url
         document = doc
-        AppState.openDocumentCount += 1
 
         // Upsert document in DB
         let checksum = Checksum.sha256(of: url) ?? ""
@@ -205,7 +188,6 @@ final class AppState {
     /// Called when the main window is closed. Saves position then shows the
     /// home screen so the next window open starts fresh.
     func closeDocument() {
-        if document != nil { AppState.openDocumentCount -= 1 }
         saveCurrentPosition()
         document    = nil
         documentURL = nil

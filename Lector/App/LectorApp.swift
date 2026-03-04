@@ -18,7 +18,17 @@ struct LectorApp: App {
                     // Finder file opens — prevents duplicate windows when macOS
                     // restores multiple WindowGroup instances from a prior session.
                     appDelegate.registerOpenHandler { url in
-                        state.openDocument(at: url)
+                        if state.document != nil {
+                            // A PDF is already open — always use a new window so
+                            // the existing document is not replaced.
+                            NotificationCenter.default.post(
+                                name: .lectorOpenNewWindow,
+                                object: nil,
+                                userInfo: ["url": url]
+                            )
+                        } else {
+                            state.openDocument(at: url)
+                        }
                     }
                 }
                 .onDisappear {
