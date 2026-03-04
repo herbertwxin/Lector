@@ -13,27 +13,12 @@ struct LectorApp: App {
             ContentView(state: state)
                 .frame(minWidth: 800, minHeight: 600)
                 .navigationTitle(state.documentURL?.deletingPathExtension().lastPathComponent ?? "")
-                .onAppear {
-                    // Register exactly once so only the primary window handles
-                    // Finder file opens — prevents duplicate windows when macOS
-                    // restores multiple WindowGroup instances from a prior session.
-                    appDelegate.registerOpenHandler { url in
-                        if state.document != nil {
-                            // A PDF is already open — always use a new window so
-                            // the existing document is not replaced.
-                            NotificationCenter.default.post(
-                                name: .lectorOpenNewWindow,
-                                object: nil,
-                                userInfo: ["url": url]
-                            )
-                        } else {
-                            state.openDocument(at: url)
-                        }
-                    }
-                }
+                .background(WindowAccessor { window in
+                    guard let window else { return }
+                    AppWindowManager.shared.register(window: window, state: state)
+                })
                 .onDisappear {
-                    // Window was closed (red button). Save position and reset to
-                    // home screen so re-opening the window starts fresh.
+                    AppWindowManager.shared.unregister(state: state)
                     state.closeDocument()
                 }
         }
@@ -46,6 +31,74 @@ struct LectorApp: App {
             PreferencesView(state: state)
         }
     }
+}
+
+// MARK: - Window Manager
+
+final class AppWindowManager {
+    static let shared = AppWindowManager()
+
+    private struct Entry {
+        weak var window: NSWindow?
+        weak var state: AppState?
+    }
+    private var entries: [Entry] = []
+    private var pendingURLs: [URL] = []
+    private init() {}
+
+    func register(window: NSWindow, state: AppState) {
+        entries.removeAll { $0.window == nil || $0.state == nil || $0.state === state }
+        entries.append(Entry(window: window, state: state))
+        if !pendingURLs.isEmpty {
+            let pending = pendingURLs; pendingURLs = []
+            pending.forEach { openURL($0) }
+        }
+    }
+
+    func unregister(state: AppState) {
+        entries.removeAll { $0.state === state || $0.window == nil || $0.state == nil }
+    }
+
+    func openURL(_ url: URL) {
+        entries.removeAll { $0.window == nil || $0.state == nil }
+        guard !entries.isEmpty else { pendingURLs.append(url); return }
+
+        // Already open → bring to front
+        if let entry = entries.first(where: { $0.state?.documentURL == url }),
+           let win = entry.window {
+            win.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        // Empty window available → reuse it
+        if let entry = entries.first(where: { $0.state?.document == nil }),
+           let win = entry.window, let st = entry.state {
+            st.openDocument(at: url)
+            win.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        // All windows occupied → open a new one
+        NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil,
+                                        userInfo: ["url": url])
+    }
+
+    func bringAnyWindowToFront() {
+        entries.removeAll { $0.window == nil || $0.state == nil }
+        entries.first?.window?.makeKeyAndOrderFront(nil)
+    }
+}
+
+// MARK: - Window Accessor
+
+struct WindowAccessor: NSViewRepresentable {
+    let callback: (NSWindow?) -> Void
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { self.callback(view.window) }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 // MARK: - Commands
@@ -91,32 +144,16 @@ struct LectorCommands: Commands {
 // MARK: - AppDelegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    // Receives Finder file-open events and routes them to the primary window's
-    // AppState.  Registered once by the primary ContentView on first appear.
-    // Using a direct closure instead of a broadcast notification prevents
-    // duplicate handling when macOS restores multiple WindowGroup windows.
-    private var openHandler: ((URL) -> Void)?
-    private var pendingURLs: [URL] = []
-
-    /// Called once by the primary ContentView. Flushes any URLs that arrived
-    /// before the view was ready (app-launch double-click scenario).
-    func registerOpenHandler(_ handler: @escaping (URL) -> Void) {
-        guard openHandler == nil else { return }   // only the first window registers
-        openHandler = handler
-        let pending = pendingURLs
-        pendingURLs = []
-        pending.forEach { handler($0) }
-    }
 
     // Keep the app alive when the window is closed (red button).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
 
-    // Clicking the Dock icon re-shows the window when none are visible.
+    // Clicking the Dock icon re-shows a window when none are visible.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
-            sender.windows.first?.makeKeyAndOrderFront(nil)
+            AppWindowManager.shared.bringAnyWindowToFront()
         }
         return true
     }
@@ -140,17 +177,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    // Called by macOS at launch (files on command line / double-clicked before
-    // the app started) and while already running (Finder double-click, "Open With…").
+    // Called by macOS at launch and while running (Finder double-click, "Open With…").
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls {
-            if let handler = openHandler {
-                handler(url)
-            } else {
-                // View not yet ready — queue for when registerOpenHandler is called.
-                pendingURLs.append(url)
-            }
-        }
+        urls.forEach { AppWindowManager.shared.openURL($0) }
     }
 
     // MARK: - Multi-window support
@@ -164,14 +193,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let newState = AppState(readOnly: readOnly)
         let rootView = ContentView(state: newState)
             .frame(minWidth: 800, minHeight: 600)
-            .onDisappear { newState.closeDocument() }
+            .onDisappear {
+                AppWindowManager.shared.unregister(state: newState)
+                newState.closeDocument()
+            }
 
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
         window.title = url.lastPathComponent
         window.setContentSize(NSSize(width: 1024, height: 768))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.isRestorable = false
         window.center()
+        AppWindowManager.shared.register(window: window, state: newState)
         window.makeKeyAndOrderFront(nil)
         newState.openDocument(at: url)
         if let page = startPage { newState.currentPage = page }

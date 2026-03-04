@@ -199,6 +199,7 @@ final class LectorPDFView: PDFView {
     private weak var state: AppState?
     private var lastPage: Int = -1
     private var lastSearchText: String = ""
+    private var isLoadingDocument = false
 
     init(state: AppState) {
         self.state = state
@@ -227,6 +228,7 @@ final class LectorPDFView: PDFView {
     }
 
     @objc private func pageChanged(_ note: Notification) {
+        guard !isLoadingDocument else { return }
         guard let page = currentPage, let doc = document else { return }
         let idx = doc.index(for: page)
         if idx != lastPage {
@@ -242,15 +244,23 @@ final class LectorPDFView: PDFView {
         if document?.documentURL != state.documentURL {
             if let url = state.documentURL {
                 let targetPage = state.currentPage
+                isLoadingDocument = true
                 document = PDFDocument(url: url)
                 // PDFs can embed an /OpenAction that causes PDFKit to navigate away from
                 // page 0 after document assignment (e.g., last-viewed page stored by Preview).
-                // Force navigation to the intended page after PDFKit finishes its setup.
+                // Force navigation to the intended page after PDFKit finishes its setup,
+                // then re-enable pageChanged tracking.
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, let doc = self.document,
-                          let page = doc.page(at: targetPage),
-                          self.currentPage != page else { return }
-                    self.go(to: page)
+                    guard let self, let doc = self.document else {
+                        self?.isLoadingDocument = false
+                        return
+                    }
+                    if let page = doc.page(at: targetPage), self.currentPage != page {
+                        self.go(to: page)
+                    }
+                    self.isLoadingDocument = false
+                    // Sync lastPage so the first real user-scroll fires correctly
+                    if let p = self.currentPage { self.lastPage = doc.index(for: p) }
                 }
             } else {
                 document = nil
