@@ -225,6 +225,13 @@ final class LectorPDFView: PDFView {
             name: .PDFViewPageChanged,
             object: self
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(visiblePagesChanged(_:)),
+            name: .PDFViewVisiblePagesChanged,
+            object: self
+        )
     }
 
     @objc private func pageChanged(_ note: Notification) {
@@ -239,30 +246,71 @@ final class LectorPDFView: PDFView {
         }
     }
 
+    @objc private func visiblePagesChanged(_ note: Notification) {
+        guard !isLoadingDocument else { return }
+        guard let doc = document else { return }
+
+        let pages = visiblePages
+        guard let firstPage = pages.first else { return }
+
+        let pageIndex = doc.index(for: firstPage)
+        guard pageIndex >= 0, pageIndex < doc.pageCount else { return }
+
+        let page = firstPage
+        let pageBounds = page.bounds(for: .mediaBox)
+
+        // Sample a point near the top center of the visible region and convert it into page coordinates.
+        let viewPoint = CGPoint(x: bounds.midX, y: bounds.maxY - 20)
+        let pagePoint = convert(viewPoint, to: page)
+
+        // Distance from the top of the page (consistent with AnnotationLayer's yOffset semantics).
+        var offset = Double(pageBounds.maxY - pagePoint.y)
+        let maxOffset = Double(pageBounds.height)
+        if offset < 0 { offset = 0 }
+        if offset > maxOffset { offset = maxOffset }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.state?.currentPage = pageIndex
+            self.state?.scrollYOffset = offset
+        }
+    }
+
     func update(state: AppState) {
         // Document
         if document?.documentURL != state.documentURL {
             if let url = state.documentURL {
                 let targetPage = state.currentPage
+                let targetOffset = state.scrollYOffset
                 isLoadingDocument = true
                 lastPage = -1 // Reset lastPage for the new document
                 
                 document = PDFDocument(url: url)
                 
-                // Force initial page navigation after document is set.
-                // We do it both immediately and async to catch PDFKit in various states.
-                if let doc = document, let page = doc.page(at: targetPage) {
-                    go(to: page)
+                func goToTargetPosition() {
+                    guard let doc = self.document,
+                          doc.pageCount > 0 else { return }
+                    let clampedPage = max(0, min(targetPage, doc.pageCount - 1))
+                    guard let page = doc.page(at: clampedPage) else { return }
+                    let bounds = page.bounds(for: .mediaBox)
+                    let maxOffset = Double(bounds.height)
+                    var offset = targetOffset
+                    if offset < 0 { offset = 0 }
+                    if offset > maxOffset { offset = maxOffset }
+                    let point = CGPoint(x: bounds.minX, y: bounds.maxY - CGFloat(offset))
+                    let dest = PDFDestination(page: page, at: point)
+                    self.go(to: dest)
                 }
-                
+
+                // Force initial navigation (page + vertical offset) after document is set.
+                goToTargetPosition()
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self, let doc = self.document else {
                         self?.isLoadingDocument = false
                         return
                     }
-                    if let page = doc.page(at: targetPage), self.currentPage != page {
-                        self.go(to: page)
-                    }
+                    goToTargetPosition()
                     self.isLoadingDocument = false
                     // Sync lastPage so the first real user-scroll fires correctly
                     if let p = self.currentPage { self.lastPage = doc.index(for: p) }

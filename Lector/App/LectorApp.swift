@@ -70,9 +70,35 @@ final class AppWindowManager {
     func register(window: NSWindow, state: AppState) {
         entries.removeAll { $0.window == nil || $0.state == nil || $0.state === state }
         entries.append(Entry(window: window, state: state))
+
+        // If at least one real document window already exists, this new
+        // window showing only the home screen is likely an extra scene
+        // created by macOS when opening files. Close it immediately so
+        // opening B/C does not leave stray home windows behind.
+        let hasDocumentWindow = entries.contains { $0.state?.document != nil && $0.window != nil }
+        if hasDocumentWindow && state.document == nil {
+            window.close()
+            entries.removeAll { $0.window == nil || $0.state === state }
+            return
+        }
+
+        // If the app was launched (or a URL was opened) before any window existed,
+        // pending URLs are queued here. Prefer to load the first pending URL into
+        // this brand-new, empty SwiftUI window instead of spawning an extra
+        // “home” window plus a separate document window.
         if !pendingURLs.isEmpty {
-            let pending = pendingURLs; pendingURLs = []
-            pending.forEach { openURL($0) }
+            var remaining = pendingURLs
+            pendingURLs = []
+
+            if state.document == nil, let first = remaining.first {
+                state.openDocument(at: first)
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                remaining.removeFirst()
+            }
+
+            // Any additional URLs still get their own windows.
+            remaining.forEach { openURL($0) }
         }
     }
 
@@ -91,17 +117,20 @@ final class AppWindowManager {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        // Empty window available → reuse it
-        if let entry = entries.first(where: { $0.state?.document == nil }),
-           let win = entry.window, let st = entry.state {
-            st.openDocument(at: url)
-            win.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
+
+        // Close any empty "home" windows so opening B/C doesn't leave
+        // extra home pages behind.
+        for entry in entries {
+            if entry.state?.document == nil, let win = entry.window {
+                win.close()
+            }
         }
-        // All windows occupied → open a new one
-        NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil,
-                                        userInfo: ["url": url])
+        // Always create a new window for this URL when it is not already open.
+        NotificationCenter.default.post(
+            name: .lectorOpenNewWindow,
+            object: nil,
+            userInfo: ["url": url]
+        )
     }
 
     func bringAnyWindowToFront() {

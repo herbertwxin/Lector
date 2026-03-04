@@ -1,0 +1,110 @@
+name: Build macOS DMG
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-dmg-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Cache Homebrew packages
+        uses: actions/cache@v4
+        env:
+          cache-name: homebrew
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: ${{ runner.os }}-dmg-intel-${{ env.cache-name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-dmg-intel-${{ env.cache-name }}-
+            ${{ runner.os }}-dmg-intel-
+
+      - name: Install dependencies
+        run: brew install freeglut mesa harfbuzz
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.2'
+          cache: true
+
+      - name: Build
+        run: |
+          chmod +x build_mac.sh
+          MAKE_PARALLEL=$(sysctl -n hw.logicalcpu) ./build_mac.sh
+
+      - name: Extract DMG from zip
+        run: |
+          unzip sioyek-release-mac.zip -d dmg-output
+
+      - name: Upload DMG artifact (Intel)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sioyek-dmg-mac-intel
+          path: dmg-output/build/sioyek.dmg
+
+  build-dmg-arm:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Cache Homebrew packages
+        uses: actions/cache@v4
+        env:
+          cache-name: homebrew
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: ${{ runner.os }}-dmg-arm-${{ env.cache-name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-dmg-arm-${{ env.cache-name }}-
+            ${{ runner.os }}-dmg-arm-
+
+      - name: Install dependencies
+        run: brew install freeglut mesa harfbuzz
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.2'
+          cache: true
+
+      - name: Build
+        run: |
+          chmod +x build_mac.sh
+          MAKE_PARALLEL=$(sysctl -n hw.logicalcpu) ./build_mac.sh
+
+      - name: Extract DMG from zip
+        run: |
+          unzip sioyek-release-mac.zip -d dmg-output
+
+      - name: Upload DMG artifact (ARM)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sioyek-dmg-mac-arm
+          path: dmg-output/build/sioyek.dmg
+
+  build-dmg-native:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native Swift app and DMG
+        run: |
+          chmod +x build_mac_native.sh
+          ./build_mac_native.sh
+
+      - name: Upload DMG artifact (Native ARM)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sioyek-dmg-mac-native
+          path: macos-native/build/sioyek-native.dmg

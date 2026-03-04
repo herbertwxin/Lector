@@ -1,0 +1,55 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - "*"
+  pull_request:
+    branches:
+      - "*"
+
+permissions:
+  contents: read
+
+jobs:
+  test-linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Set up GCC 12
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-12 g++-12
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Install dependencies
+        run: sudo apt install libharfbuzz-dev
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.2'
+          cache: true
+
+      - name: Build MuPDF
+        run: |
+          cd mupdf
+          make -j$(nproc)
+        env:
+          CC: gcc-12
+          CXX: g++-12
+
+      - name: Build and run tests
+        run: |
+          mkdir -p build_tests
+          cd build_tests
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
+          make -j$(nproc) test_utils
+          ctest --output-on-failure
+        env:
+          CC: gcc-12
+          CXX: g++-12
+          QT_QPA_PLATFORM: offscreen

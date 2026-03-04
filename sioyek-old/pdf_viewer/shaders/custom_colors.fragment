@@ -1,0 +1,14 @@
+#version 330 core
+
+out vec4 color;
+in vec2 screen_pos;
+in vec2 uvs;
+uniform sampler2D pdf_texture;
+
+uniform mat4 transform_matrix;
+
+void main(){
+    vec4 pdf_color = vec4(texture(pdf_texture, uvs).rgb, 1);
+    vec3 resulting_unclamped_color = (transform_matrix * pdf_color).rgb;
+    color = vec4(clamp(resulting_unclamped_color, 0, 1), 1.0);
+}
