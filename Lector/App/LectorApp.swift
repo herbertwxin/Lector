@@ -64,23 +64,45 @@ final class AppWindowManager {
         weak var state: AppState?
     }
     private var entries: [Entry] = []
+    private var pendingURLs: [URL] = []
     private init() {}
 
     func register(window: NSWindow, state: AppState) {
         entries.removeAll { $0.window == nil || $0.state == nil || $0.state === state }
         entries.append(Entry(window: window, state: state))
 
-        // If at least one real document window already exists, this new
-        // window showing only the home screen is likely an extra scene
-        // created by macOS when opening files. Close it immediately so
-        // opening B/C does not leave stray home windows behind.
-        let hasDocumentWindow = entries.contains { $0.state?.document != nil && $0.window != nil }
-        if hasDocumentWindow && state.document == nil {
+        // If at least one real document window already exists and there are no
+        // pending URLs waiting to be opened, then any brand-new window whose
+        // state has no document is almost certainly an extra “home” scene
+        // created by macOS when opening B/C/etc. Close it so we don’t leave
+        // stray home windows behind.
+        let hasDocumentWindow = entries.contains {
+            $0.state?.document != nil && $0.window != nil && $0.state !== state
+        }
+        if hasDocumentWindow && pendingURLs.isEmpty && state.document == nil {
             window.close()
             entries.removeAll { $0.window == nil || $0.state === state }
             return
         }
 
+        // If the app was launched (or a URL was opened) before any window
+        // existed, pending URLs are queued here. Prefer to load the first
+        // pending URL into this brand-new, empty SwiftUI window instead of
+        // spawning an extra “home” window plus a separate document window.
+        if !pendingURLs.isEmpty {
+            var remaining = pendingURLs
+            pendingURLs = []
+
+            if state.document == nil, let first = remaining.first {
+                state.openDocument(at: first)
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                remaining.removeFirst()
+            }
+
+            // Any additional URLs still get their own windows via openURL.
+            remaining.forEach { openURL($0) }
+        }
     }
 
     func unregister(state: AppState) {
@@ -89,6 +111,13 @@ final class AppWindowManager {
 
     func openURL(_ url: URL) {
         entries.removeAll { $0.window == nil || $0.state == nil }
+        // No registered windows yet: queue URL until the first window registers,
+        // so we can reuse that window instead of flashing an extra home window.
+        if entries.isEmpty {
+            pendingURLs.append(url)
+            return
+        }
+
         // If a window with this URL is already open, just bring it to front.
         if let entry = entries.first(where: { $0.state?.documentURL == url }),
            let win = entry.window {
@@ -97,9 +126,7 @@ final class AppWindowManager {
             return
         }
 
-        // Otherwise, always create a new window for this URL, even if there are
-        // currently no registered windows (e.g. app running with all windows
-        // closed, or launched from Finder/Open With).
+        // Otherwise, always create a new window for this URL.
         NotificationCenter.default.post(
             name: .lectorOpenNewWindow,
             object: nil,
