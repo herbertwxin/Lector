@@ -151,6 +151,14 @@ final class PDFContainerView: NSView {
             object: nil
         )
 
+        // Print
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePrint),
+            name: .lectorPrint,
+            object: nil
+        )
+
         // Focus PDF view (e.g. after command/search mode exits)
         NotificationCenter.default.addObserver(
             self,
@@ -158,6 +166,10 @@ final class PDFContainerView: NSView {
             name: .lectorFocusPDF,
             object: nil
         )
+    }
+
+    @objc private func handlePrint() {
+        pdfView.print(with: NSPrintInfo.shared, autoRotate: true)
     }
 
     @objc private func focusPDF() {
@@ -274,7 +286,17 @@ final class LectorPDFView: PDFView {
         // Document
         if document?.documentURL != state.documentURL {
             if let url = state.documentURL {
+                let targetPage = state.currentPage
                 document = PDFDocument(url: url)
+                // PDFs can embed an /OpenAction that causes PDFKit to navigate away from
+                // page 0 after document assignment (e.g., last-viewed page stored by Preview).
+                // Force navigation to the intended page after PDFKit finishes its setup.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let doc = self.document,
+                          let page = doc.page(at: targetPage),
+                          self.currentPage != page else { return }
+                    self.go(to: page)
+                }
             } else {
                 document = nil
             }

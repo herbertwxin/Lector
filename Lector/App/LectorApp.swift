@@ -12,13 +12,14 @@ struct LectorApp: App {
         WindowGroup {
             ContentView(state: state)
                 .frame(minWidth: 800, minHeight: 600)
-                // AppDelegate implements application(_:open:) and posts
-                // lectorHandleURL for both launch-time and already-running opens.
-                // onOpenURL is NOT used because it is unreliable once the app is
-                // already running (Finder routes through application(_:open:) then).
-                .onReceive(NotificationCenter.default.publisher(for: .lectorHandleURL)) { note in
-                    guard let url = note.userInfo?["url"] as? URL else { return }
-                    state.openDocument(at: url)
+                .navigationTitle(state.documentURL?.deletingPathExtension().lastPathComponent ?? "")
+                .onAppear {
+                    // Register exactly once so only the primary window handles
+                    // Finder file opens — prevents duplicate windows when macOS
+                    // restores multiple WindowGroup instances from a prior session.
+                    appDelegate.registerOpenHandler { url in
+                        state.openDocument(at: url)
+                    }
                 }
                 .onDisappear {
                     // Window was closed (red button). Save position and reset to
@@ -61,6 +62,11 @@ struct LectorCommands: Commands {
             }
         }
 
+        CommandGroup(replacing: .printItem) {
+            Button("Print…") { state?.printDocument() }
+                .keyboardShortcut("p", modifiers: .command)
+        }
+
         // View menu extras
         CommandGroup(after: .toolbar) {
             Button("Toggle Table of Contents") { state?.showTOC.toggle() }
@@ -75,6 +81,23 @@ struct LectorCommands: Commands {
 // MARK: - AppDelegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    // Receives Finder file-open events and routes them to the primary window's
+    // AppState.  Registered once by the primary ContentView on first appear.
+    // Using a direct closure instead of a broadcast notification prevents
+    // duplicate handling when macOS restores multiple WindowGroup windows.
+    private var openHandler: ((URL) -> Void)?
+    private var pendingURLs: [URL] = []
+
+    /// Called once by the primary ContentView. Flushes any URLs that arrived
+    /// before the view was ready (app-launch double-click scenario).
+    func registerOpenHandler(_ handler: @escaping (URL) -> Void) {
+        guard openHandler == nil else { return }   // only the first window registers
+        openHandler = handler
+        let pending = pendingURLs
+        pendingURLs = []
+        pending.forEach { handler($0) }
+    }
+
     // Keep the app alive when the window is closed (red button).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
@@ -90,9 +113,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.activate(ignoringOtherApps: true)
-        // Enable macOS's built-in tab bar so addTabbedWindow(_:ordered:) works.
-        NSWindow.allowsAutomaticWindowTabbing = true
-
         NSWindow.allowsAutomaticWindowTabbing = false
 
         // Close any Settings window that macOS restored from the previous session.
@@ -110,18 +130,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    // Called by macOS both at launch (with files passed on the command line /
-    // double-clicked before the app started) and while already running (Finder
-    // double-click, drag-onto-Dock, "Open With…", etc.).  We post lectorHandleURL
-    // so the primary WindowGroup window can route it through AppState, which
-    // applies the documentOpenBehavior preference (current / tab / window).
+    // Called by macOS at launch (files on command line / double-clicked before
+    // the app started) and while already running (Finder double-click, "Open With…").
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            NotificationCenter.default.post(
-                name: .lectorHandleURL,
-                object: nil,
-                userInfo: ["url": url]
-            )
+            if let handler = openHandler {
+                handler(url)
+            } else {
+                // View not yet ready — queue for when registerOpenHandler is called.
+                pendingURLs.append(url)
+            }
         }
     }
 

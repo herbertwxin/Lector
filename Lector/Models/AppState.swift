@@ -544,6 +544,8 @@ final class AppState {
             NotificationCenter.default.post(name: .lectorCopySelection, object: nil)
         case "rotate", "r":
             NotificationCenter.default.post(name: .lectorRotate, object: arg == "ccw" ? false : true)
+        case "print":
+            printDocument()
         case "fullscreen", "f11":
             NSApplication.shared.mainWindow?.toggleFullScreen(nil)
         case "quit", "q":
@@ -922,6 +924,13 @@ final class AppState {
         NotificationCenter.default.post(name: .lectorSearchPrev, object: nil)
     }
 
+    // MARK: - Print
+
+    func printDocument() {
+        guard document != nil else { return }
+        NotificationCenter.default.post(name: .lectorPrint, object: nil)
+    }
+
     // MARK: - Web Search
 
     private func performWebSearch(engine: WebEngine) {
@@ -957,6 +966,7 @@ private final class QuickSelectItemImpl: QuickSelectItem {
 // MARK: - Notifications
 
 extension Notification.Name {
+    static let lectorPrint               = Notification.Name("lectorPrint")
     static let lectorAddHighlight       = Notification.Name("lectorAddHighlight")
     static let lectorSearchNext         = Notification.Name("lectorSearchNext")
     static let lectorSearchPrev         = Notification.Name("lectorSearchPrev")
@@ -966,5 +976,4 @@ extension Notification.Name {
     static let lectorRotate             = Notification.Name("lectorRotate")
     static let lectorFocusPDF           = Notification.Name("lectorFocusPDF")
     static let lectorOpenNewWindow      = Notification.Name("lectorOpenNewWindow")
-    static let lectorHandleURL          = Notification.Name("lectorHandleURL")
 }
