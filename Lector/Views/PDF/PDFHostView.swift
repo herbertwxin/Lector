@@ -89,83 +89,37 @@ final class PDFContainerView: NSView {
     }
 
     private func observeNotifications() {
-        // Refresh annotation layer whenever PDFView scrolls or zooms
-        let names: [Notification.Name] = [
+        // Global: refresh annotation layer whenever PDFView scrolls or zooms.
+        // These are PDFKit system notifications posted without a state object.
+        let globalNames: [Notification.Name] = [
             .PDFViewPageChanged,
             .PDFViewScaleChanged,
             .PDFViewVisiblePagesChanged,
             .lectorAnnotationsChanged
         ]
-        for name in names {
+        for name in globalNames {
             NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(refreshAnnotations),
-                name: name,
-                object: nil
+                self, selector: #selector(refreshAnnotations), name: name, object: nil
             )
         }
 
-        // Add-highlight request
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleAddHighlight(_:)),
-            name: .lectorAddHighlight,
-            object: nil
-        )
-
-        // Web search
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleWebSearch(_:)),
-            name: .lectorWebSearch,
-            object: nil
-        )
-
-        // Search nav
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleSearchNext),
-            name: .lectorSearchNext,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleSearchPrev),
-            name: .lectorSearchPrev,
-            object: nil
-        )
-
-        // Copy selection
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleCopy),
-            name: .lectorCopySelection,
-            object: nil
-        )
-
-        // Rotate
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleRotate(_:)),
-            name: .lectorRotate,
-            object: nil
-        )
-
-        // Print
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handlePrint),
-            name: .lectorPrint,
-            object: nil
-        )
-
-        // Focus PDF view (e.g. after command/search mode exits)
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(focusPDF),
-            name: .lectorFocusPDF,
-            object: nil
-        )
+        // Scoped: only handle notifications originating from this window's state.
+        // Passing `state` as object ensures two windows with the same PDF
+        // remain independent (no cross-window page sync, printing, rotation, etc.).
+        guard let state else { return }
+        let scoped: [(Selector, Notification.Name)] = [
+            (#selector(handleAddHighlight(_:)), .lectorAddHighlight),
+            (#selector(handleWebSearch(_:)),    .lectorWebSearch),
+            (#selector(handleSearchNext),       .lectorSearchNext),
+            (#selector(handleSearchPrev),       .lectorSearchPrev),
+            (#selector(handleCopy),             .lectorCopySelection),
+            (#selector(handleRotate(_:)),       .lectorRotate),
+            (#selector(handlePrint),            .lectorPrint),
+            (#selector(focusPDF),               .lectorFocusPDF),
+        ]
+        for (sel, name) in scoped {
+            NotificationCenter.default.addObserver(self, selector: sel, name: name, object: state)
+        }
     }
 
     @objc private func handlePrint() {
@@ -181,7 +135,8 @@ final class PDFContainerView: NSView {
     }
 
     @objc private func handleAddHighlight(_ note: Notification) {
-        guard let type = note.object as? Character else { return }
+        guard let typeStr = note.userInfo?["type"] as? String,
+              let type = typeStr.first else { return }
         guard let selection = pdfView.currentSelection,
               let doc = pdfView.document else { return }
 
@@ -204,7 +159,7 @@ final class PDFContainerView: NSView {
     }
 
     @objc private func handleWebSearch(_ note: Notification) {
-        guard let engine = note.object as? WebEngine else { return }
+        guard let engine = note.userInfo?["engine"] as? WebEngine else { return }
         let text = pdfView.currentSelection?.string ?? ""
         let query = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlStr = String(format: engine.urlTemplate, query)
@@ -228,7 +183,7 @@ final class PDFContainerView: NSView {
     }
 
     @objc private func handleRotate(_ note: Notification) {
-        let clockwise = note.object as? Bool ?? true
+        let clockwise = note.userInfo?["clockwise"] as? Bool ?? true
         guard let doc = pdfView.document else { return }
         for i in 0..<doc.pageCount {
             guard let page = doc.page(at: i) else { continue }

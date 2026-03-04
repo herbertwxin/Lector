@@ -86,6 +86,11 @@ final class AppState {
 
     // MARK: Services
     @ObservationIgnored let isReadOnly: Bool
+
+    // Counts how many AppState instances currently have a document open.
+    // Used to decide whether a Finder open should reuse the welcome-screen
+    // window or always spawn a new one.
+    private static var openDocumentCount = 0
     @ObservationIgnored let database: Database
     @ObservationIgnored private let navHistory = NavHistory()
     @ObservationIgnored private let keyTrie = KeyTrie()
@@ -142,8 +147,10 @@ final class AppState {
             return
         }
 
-        // If a document is already open, open the new one in a separate window.
-        if document != nil {
+        // If any window already has a document open, always use a new window.
+        // This prevents the welcome-screen window from being replaced when a
+        // secondary window is already showing a PDF.
+        if document != nil || AppState.openDocumentCount > 0 {
             NotificationCenter.default.post(
                 name: .lectorOpenNewWindow,
                 object: nil,
@@ -161,6 +168,7 @@ final class AppState {
         }
         documentURL = url
         document = doc
+        AppState.openDocumentCount += 1
 
         // Upsert document in DB
         let checksum = Checksum.sha256(of: url) ?? ""
@@ -197,6 +205,7 @@ final class AppState {
     /// Called when the main window is closed. Saves position then shows the
     /// home screen so the next window open starts fresh.
     func closeDocument() {
+        if document != nil { AppState.openDocumentCount -= 1 }
         saveCurrentPosition()
         document    = nil
         documentURL = nil
@@ -259,7 +268,7 @@ final class AppState {
             if event.keyCode == 53 { // Escape
                 mode = .normal
                 isSearching = false
-                NotificationCenter.default.post(name: .lectorFocusPDF, object: nil)
+                NotificationCenter.default.post(name: .lectorFocusPDF, object: self)
                 return true
             }
             return false
@@ -541,9 +550,10 @@ final class AppState {
         case "recent", "O":
             showRecentDocsPanel()
         case "copy":
-            NotificationCenter.default.post(name: .lectorCopySelection, object: nil)
+            NotificationCenter.default.post(name: .lectorCopySelection, object: self)
         case "rotate", "r":
-            NotificationCenter.default.post(name: .lectorRotate, object: arg == "ccw" ? false : true)
+            NotificationCenter.default.post(name: .lectorRotate, object: self,
+                                            userInfo: ["clockwise": arg != "ccw"])
         case "print":
             printDocument()
         case "fullscreen", "f11":
@@ -559,7 +569,7 @@ final class AppState {
         }
 
         mode = .normal
-        NotificationCenter.default.post(name: .lectorFocusPDF, object: nil)
+        NotificationCenter.default.post(name: .lectorFocusPDF, object: self)
     }
 
     // ── Chapter name for current page ─────────────────────────────────────
@@ -753,8 +763,8 @@ final class AppState {
     // MARK: - Highlights
 
     private func addHighlightWithType(_ type: Character) {
-        // Grab current PDFView selection — signalled via notification
-        NotificationCenter.default.post(name: .lectorAddHighlight, object: type)
+        NotificationCenter.default.post(name: .lectorAddHighlight, object: self,
+                                        userInfo: ["type": String(type)])
     }
 
     func addHighlight(type: Character, rectsPerPage: [Int: [CGRect]], selectionText: String,
@@ -917,24 +927,25 @@ final class AppState {
     private var searchDelegate: AnyObject?
 
     private func searchNext() {
-        NotificationCenter.default.post(name: .lectorSearchNext, object: nil)
+        NotificationCenter.default.post(name: .lectorSearchNext, object: self)
     }
 
     private func searchPrev() {
-        NotificationCenter.default.post(name: .lectorSearchPrev, object: nil)
+        NotificationCenter.default.post(name: .lectorSearchPrev, object: self)
     }
 
     // MARK: - Print
 
     func printDocument() {
         guard document != nil else { return }
-        NotificationCenter.default.post(name: .lectorPrint, object: nil)
+        NotificationCenter.default.post(name: .lectorPrint, object: self)
     }
 
     // MARK: - Web Search
 
     private func performWebSearch(engine: WebEngine) {
-        NotificationCenter.default.post(name: .lectorWebSearch, object: engine)
+        NotificationCenter.default.post(name: .lectorWebSearch, object: self,
+                                        userInfo: ["engine": engine])
     }
 }
 
