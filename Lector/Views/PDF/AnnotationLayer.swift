@@ -59,7 +59,7 @@ final class AnnotationLayer: NSView {
             let color = highlight.type.highlightColor
             ctx.setFillColor(color.cgColor)
 
-            let rectsPerPage = highlight.rectsPerPage()
+            let rectsPerPage = highlight.decodedRects
             for (pageIdx, rects) in rectsPerPage {
                 guard pageIdx < doc.pageCount,
                       let pdfPage = doc.page(at: pageIdx)
