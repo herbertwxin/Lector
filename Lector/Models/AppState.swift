@@ -41,6 +41,7 @@ final class AppState {
     var documentURL: URL?
     var document: PDFDocument?
     var documentID: Int64 = 0
+    var outlineCache: [(page: Int, label: String)] = []
 
     // MARK: Navigation
     var currentPage: Int = 0
@@ -163,6 +164,9 @@ final class AppState {
         let checksum = Checksum.sha256(of: url) ?? ""
         documentID = (try? database.upsertDocument(url: url, checksum: checksum)) ?? 0
 
+        // Build outline cache
+        buildOutlineCache(for: doc)
+
         // Restore or reset view position.
         if rememberLastPosition,
            let pos = try? database.fetchLastPosition(docID: documentID) {
@@ -198,6 +202,7 @@ final class AppState {
         document    = nil
         documentURL = nil
         documentID  = 0
+        outlineCache = []
         bookmarks   = []
         highlights  = []
         marks       = []
@@ -562,58 +567,56 @@ final class AppState {
 
     // ── Chapter name for current page ─────────────────────────────────────
 
-    var currentChapterName: String {
-        guard let doc = document, let outline = doc.outlineRoot else { return "" }
-        var bestLabel: String? = nil
-        var bestPage = -1
+    private func buildOutlineCache(for doc: PDFDocument) {
+        outlineCache = []
+        guard let outline = doc.outlineRoot else { return }
+
         func walk(_ node: PDFOutline) {
             for i in 0..<node.numberOfChildren {
                 guard let child = node.child(at: i) else { continue }
                 if let destPage = child.destination?.page {
                     let idx = doc.index(for: destPage)
-                    if idx <= currentPage && idx > bestPage {
-                        bestPage = idx
-                        bestLabel = child.label
+                    if idx >= 0 {
+                        outlineCache.append((page: idx, label: child.label ?? ""))
                     }
                 }
                 walk(child)
             }
         }
         walk(outline)
-        return bestLabel ?? ""
+        // Sort by page number so we can easily search
+        outlineCache.sort { $0.page < $1.page }
+    }
+
+    var currentChapterName: String {
+        var bestLabel: String = ""
+        var bestPage: Int = -1
+        for entry in outlineCache {
+            if entry.page <= currentPage && entry.page > bestPage {
+                bestPage = entry.page
+                bestLabel = entry.label
+            } else if entry.page > currentPage {
+                break
+            }
+        }
+        return bestLabel
     }
 
     // ── Chapter navigation ────────────────────────────────────────────────
 
     func jumpToChapter(forward: Bool) {
-        guard let doc = document,
-              let outline = doc.outlineRoot
-        else { return }
-
-        var pages: [Int] = []
-        collectOutlinePages(node: outline, doc: doc, into: &pages)
-        pages.sort()
+        if outlineCache.isEmpty { return }
 
         if forward {
-            if let next = pages.first(where: { $0 > currentPage }) {
+            if let next = outlineCache.first(where: { $0.page > currentPage }) {
                 pushNavState()
-                currentPage = next
+                currentPage = next.page
             }
         } else {
-            if let prev = pages.last(where: { $0 < currentPage }) {
+            if let prev = outlineCache.last(where: { $0.page < currentPage }) {
                 pushNavState()
-                currentPage = prev
+                currentPage = prev.page
             }
-        }
-    }
-
-    private func collectOutlinePages(node: PDFOutline, doc: PDFDocument, into pages: inout [Int]) {
-        for i in 0..<node.numberOfChildren {
-            guard let child = node.child(at: i) else { continue }
-            if let page = child.destination?.page {
-                pages.append(doc.index(for: page))
-            }
-            collectOutlinePages(node: child, doc: doc, into: &pages)
         }
     }
 

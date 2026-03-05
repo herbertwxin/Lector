@@ -20,26 +20,43 @@ struct Highlight: Identifiable, Hashable {
     let startPage: Int
     let endPage: Int
     let rectsJSON: String   // JSON array of page-relative CGRect values: [[x,y,w,h], ...]
+    let decodedRects: [Int: [CGRect]] // Decoded rects per page index (relative to PDF page coordinates)
     let type: Character     // 'a','b','c','d' → different colors
     let selectionText: String
     let createdAt: Date
 
-    /// Decoded rects per page index (relative to PDF page coordinates)
-    func rectsPerPage() -> [Int: [CGRect]] {
-        guard let data = rectsJSON.data(using: .utf8),
-              let raw = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-        else { return [:] }
+    init(id: Int64, docID: Int64, startPage: Int, endPage: Int, rectsJSON: String, type: Character, selectionText: String, createdAt: Date) {
+        self.id = id
+        self.docID = docID
+        self.startPage = startPage
+        self.endPage = endPage
+        self.rectsJSON = rectsJSON
+        self.type = type
+        self.selectionText = selectionText
+        self.createdAt = createdAt
+
         var result: [Int: [CGRect]] = [:]
-        for entry in raw {
-            guard let page = entry["page"] as? Int,
-                  let x = entry["x"] as? Double,
-                  let y = entry["y"] as? Double,
-                  let w = entry["w"] as? Double,
-                  let h = entry["h"] as? Double
-            else { continue }
-            result[page, default: []].append(CGRect(x: x, y: y, width: w, height: h))
+        if let data = rectsJSON.data(using: .utf8),
+           let raw = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            for entry in raw {
+                guard let page = entry["page"] as? Int,
+                      let x = entry["x"] as? Double,
+                      let y = entry["y"] as? Double,
+                      let w = entry["w"] as? Double,
+                      let h = entry["h"] as? Double
+                else { continue }
+                result[page, default: []].append(CGRect(x: x, y: y, width: w, height: h))
+            }
         }
-        return result
+        self.decodedRects = result
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: Highlight, rhs: Highlight) -> Bool {
+        return lhs.id == rhs.id
     }
 
     static func encodeRects(_ rectsPerPage: [Int: [CGRect]]) -> String {
