@@ -22,6 +22,7 @@
 		A1B1990545D9A037C4D5B00B /* AnnotationLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F487A41DBAE2A35EB68F43 /* AnnotationLayer.swift */; };
 		A7248770F07145C7ADB78A4E /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19582E7FD539FC82FB9D5421 /* PreferencesView.swift */; };
 		BE6CEA00E67483353C6D3F82 /* Database.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444B71B8D025036D7CF2F916 /* Database.swift */; };
+		C1D2E3F4A5B6C7D8E9F0A1B2 /* DocumentStructure.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A5B6C7D8E9F0A1B2C3 /* DocumentStructure.swift */; };
 		D02EAFBDDCCB6052AD2188AE /* CommandPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2DD0E7402BFFFFF779642D /* CommandPanel.swift */; };
 		E505B99A56D416080573D4B4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3CFE36B2F1C1AD3B8271732D /* Assets.xcassets */; };
 		EA0BFCAACCAD893D93A9271E /* QuickSelectPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F26987FF28961BD2B35AC4C /* QuickSelectPanel.swift */; };
@@ -41,6 +42,7 @@
 		3D310858DFF18AB330392D6C /* Command.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Command.swift; sourceTree = "<group>"; };
 		43F487A41DBAE2A35EB68F43 /* AnnotationLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationLayer.swift; sourceTree = "<group>"; };
 		444B71B8D025036D7CF2F916 /* Database.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Database.swift; sourceTree = "<group>"; };
+		D2E3F4A5B6C7D8E9F0A1B2C3 /* DocumentStructure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStructure.swift; sourceTree = "<group>"; };
 		453731F83B6920FDCB825F46 /* Lector.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lector.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A83A02AFB5D9D5DC7FFF8F8 /* PDFHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFHostView.swift; sourceTree = "<group>"; };
 		4F26987FF28961BD2B35AC4C /* QuickSelectPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSelectPanel.swift; sourceTree = "<group>"; };
@@ -120,6 +122,7 @@
 			children = (
 				FD6BA22D69348FA63F1F524D /* Checksum.swift */,
 				444B71B8D025036D7CF2F916 /* Database.swift */,
+				D2E3F4A5B6C7D8E9F0A1B2C3 /* DocumentStructure.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -280,6 +283,7 @@
 				D02EAFBDDCCB6052AD2188AE /* CommandPanel.swift in Sources */,
 				4C18622204628D0568953E1C /* ContentView.swift in Sources */,
 				BE6CEA00E67483353C6D3F82 /* Database.swift in Sources */,
+				C1D2E3F4A5B6C7D8E9F0A1B2 /* DocumentStructure.swift in Sources */,
 				0AB7E09CFB70A6C6216665EC /* DefaultBindings.swift in Sources */,
 				007FA165F4329F267CEEA55A /* KeyTrie.swift in Sources */,
 				5CF2053F10943178AD997CCA /* LectorApp.swift in Sources */,

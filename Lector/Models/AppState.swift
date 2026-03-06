@@ -81,6 +81,11 @@ final class AppState {
     var quickSelectItems: [QuickSelectItem] = []
     var quickSelectTitle: String = ""
 
+    // MARK: Document structure (figures, tables, equations, etc.)
+    /// Cache key: document URL path. Cleared when document closes.
+    private var detectedStructureCache: [String: [DocumentStructureItem]] = [:]
+    var isDetectingStructure: Bool = false
+
     // MARK: Portal state
     var portalSourcePage: Int? = nil
     var portalSourceY: Double = 0
@@ -203,6 +208,7 @@ final class AppState {
         documentURL = nil
         documentID  = 0
         outlineCache = []
+        detectedStructureCache.removeAll()
         bookmarks   = []
         highlights  = []
         marks       = []
@@ -525,6 +531,20 @@ final class AppState {
                 execute(.webSearch(engine: .google))
             }
 
+        // ── Document structure (figure, equation, table, proposition, etc.) ─
+        case "figure", "fig":
+            showStructurePanel(type: .figure)
+        case "equation", "eq":
+            showStructurePanel(type: .equation)
+        case "table":
+            showStructurePanel(type: .table)
+        case "proposition", "prop":
+            showStructurePanel(type: .proposition)
+        case "theorem":
+            showStructurePanel(type: .theorem)
+        case "lemma":
+            showStructurePanel(type: .lemma)
+
         // ── UI / Misc ─────────────────────────────────────────────────────
         case "toc":
             showTOC.toggle()
@@ -669,6 +689,10 @@ final class AppState {
             ("⌥f",            "Search selection on Google"),
             // UI
             ("t",             "Toggle table of contents"),
+            (":figure",       "Jump to figure (dropdown)"),
+            (":equation",     "Jump to equation (dropdown)"),
+            (":table",        "Jump to table (dropdown)"),
+            (":proposition",  "Jump to proposition (dropdown)"),
             (":",             "Open command mode"),
             ("o",             "Open document picker"),
             ("F8",            "Cycle appearance: Auto → Dark → Light"),
@@ -681,6 +705,61 @@ final class AppState {
         quickSelectItems = items
         quickSelectTitle = "Keyboard Shortcuts — type to filter"
         showQuickSelect = true
+    }
+
+    // ── Document structure (figure, equation, table, etc.) ─────────────────
+
+    private func showStructurePanel(type: DocumentStructureType) {
+        guard let doc = document, let url = documentURL else {
+            statusMessage = "No document open"
+            return
+        }
+        let cacheKey = url.path
+
+        func showItems(_ items: [DocumentStructureItem]) {
+            let list = items.filter { $0.type == type }
+            if list.isEmpty {
+                quickSelectItems = []
+                quickSelectTitle = "\(type.displayName)s — none found"
+            } else {
+                quickSelectItems = list.map { item in
+                    QuickSelectItemImpl(
+                        title: item.label,
+                        subtitle: "Page \(item.pageIndex + 1)",
+                        page: item.pageIndex,
+                        action: { [weak self] in
+                            guard let self else { return }
+                            self.currentPage = item.pageIndex
+                            self.scrollYOffset = item.yOffset
+                            self.showQuickSelect = false
+                        }
+                    )
+                }
+                quickSelectTitle = "\(type.displayName)s — type to filter"
+            }
+            showQuickSelect = true
+        }
+
+        if let cached = detectedStructureCache[cacheKey] {
+            showItems(cached)
+            return
+        }
+
+        quickSelectItems = []
+        quickSelectTitle = "\(type.displayName)s — detecting…"
+        showQuickSelect = true
+        isDetectingStructure = true
+
+        let docCopy = doc
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let items = DocumentStructureDetector.detect(document: docCopy)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isDetectingStructure = false
+                self.detectedStructureCache[cacheKey] = items
+                showItems(items)
+            }
+        }
     }
 
     // ── Recent docs quick-select ──────────────────────────────────────────
