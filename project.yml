@@ -24,3 +24,10 @@ targets:
         ONLY_ACTIVE_ARCH: NO
     dependencies:
       - sdk: PDFKit.framework
+
+  LectorTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [LectorTests]
+    dependencies:
+      - target: Lector
