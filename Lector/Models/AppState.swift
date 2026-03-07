@@ -677,6 +677,12 @@ final class AppState {
 
     // ── Smart Zoom ───────────────────────────────────────────────────────
 
+    /// Minimum difference (in points) between media and crop box widths
+    /// to consider the crop box meaningfully tighter.
+    private static let cropBoxThreshold: CGFloat = 1.0
+    /// Minimum zoom ratio (2%) required before applying the margin crop.
+    private static let minZoomImprovementRatio: CGFloat = 1.02
+
     /// Toggles between fit-to-width and a tighter zoom that crops
     /// whitespace margins for maximum screen utilisation.
     private func smartZoomToggle() {
@@ -690,12 +696,12 @@ final class AppState {
             let crop  = page.bounds(for: .cropBox)
 
             // Use the crop box if it is meaningfully smaller than the media box.
-            let contentBox = (crop.width < media.width - 1) ? crop : media
+            let contentBox = (crop.width < media.width - Self.cropBoxThreshold) ? crop : media
 
             guard contentBox.width > 0 else { return }
             let ratio = media.width / contentBox.width   // e.g. 1.15 for 7.5% margins
             // Only apply if the ratio gives a noticeable improvement.
-            if ratio > 1.02 {
+            if ratio > Self.minZoomImprovementRatio {
                 fitToWidth = false
                 zoomScale = viewScaleFactor * ratio
             }
