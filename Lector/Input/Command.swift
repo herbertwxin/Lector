@@ -32,6 +32,7 @@ enum Command: Equatable {
     case zoomIn
     case zoomOut
     case fitToWidth
+    case smartZoom
     case actualSize
 
     // Search

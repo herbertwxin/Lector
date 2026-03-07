@@ -48,6 +48,8 @@ final class AppState {
     var scrollYOffset: Double = 0
     var zoomScale: CGFloat = 1.0
     var fitToWidth: Bool = true
+    /// The actual scale factor reported by PDFView (kept in sync by LectorPDFView).
+    var viewScaleFactor: CGFloat = 1.0
 
     // MARK: Mode & UI
     var mode: ViewerMode = .normal
@@ -322,13 +324,17 @@ final class AppState {
 
         // Zoom
         case .zoomIn:
+            let base = fitToWidth ? viewScaleFactor : zoomScale
             fitToWidth = false
-            zoomScale = min(zoomScale * 1.25, 10.0)
+            zoomScale = min(base * 1.25, 10.0)
         case .zoomOut:
+            let base = fitToWidth ? viewScaleFactor : zoomScale
             fitToWidth = false
-            zoomScale = max(zoomScale / 1.25, 0.1)
+            zoomScale = max(base / 1.25, 0.1)
         case .fitToWidth:
             fitToWidth = true
+        case .smartZoom:
+            smartZoomToggle()
         case .actualSize:
             fitToWidth = false
             zoomScale = 1.0
@@ -466,6 +472,8 @@ final class AppState {
             execute(.zoomOut)
         case "fit", "fitwidth", "fw":
             execute(.fitToWidth)
+        case "smartzoom", "sz":
+            execute(.smartZoom)
         case "actualsize", "reset":
             execute(.actualSize)
 
@@ -667,6 +675,42 @@ final class AppState {
         }
     }
 
+    // ── Smart Zoom ───────────────────────────────────────────────────────
+
+    /// Minimum difference (in points) between media and crop box widths
+    /// to consider the crop box meaningfully tighter.
+    private static let cropBoxThreshold: CGFloat = 1.0
+    /// Minimum zoom ratio (2%) required before applying the margin crop.
+    private static let minZoomImprovementRatio: CGFloat = 1.02
+
+    /// Toggles between fit-to-width and a tighter zoom that crops
+    /// whitespace margins for maximum screen utilisation.
+    private func smartZoomToggle() {
+        if fitToWidth {
+            // Already fitting width → zoom in to crop margins.
+            guard let doc = document else { return }
+            let pageIndex = max(0, min(currentPage, doc.pageCount - 1))
+            guard let page = doc.page(at: pageIndex) else { return }
+
+            let media = page.bounds(for: .mediaBox)
+            let crop  = page.bounds(for: .cropBox)
+
+            // Use the crop box if it is meaningfully smaller than the media box.
+            let contentBox = (crop.width < media.width - Self.cropBoxThreshold) ? crop : media
+
+            guard contentBox.width > 0 else { return }
+            let ratio = media.width / contentBox.width   // e.g. 1.15 for 7.5% margins
+            // Only apply if the ratio gives a noticeable improvement.
+            if ratio > Self.minZoomImprovementRatio {
+                fitToWidth = false
+                zoomScale = viewScaleFactor * ratio
+            }
+        } else {
+            // Any manual zoom → return to fit-to-width.
+            fitToWidth = true
+        }
+    }
+
     // ── Help quick-select ─────────────────────────────────────────────────
 
     private func showHelpPanel() {
@@ -687,6 +731,7 @@ final class AppState {
             ("+",             "Zoom in"),
             ("-",             "Zoom out"),
             ("=",             "Fit to width"),
+            ("w",             "Smart zoom (toggle margin crop)"),
             ("0",             "Actual size (100%)"),
             // Search
             ("/",             "Open search bar"),

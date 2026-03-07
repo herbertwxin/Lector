@@ -56,6 +56,7 @@ open Lector.xcodeproj   # then ⌘B
 | `+` | Zoom in |
 | `-` | Zoom out |
 | `=` | Fit to width |
+| `w` | Smart zoom (toggle margin crop) |
 | `0` | Actual size (100%) |
 
 ### Search
@@ -145,6 +146,7 @@ Press `:` to enter command mode, type a command, press `Enter`.
 | `:zoomin` | Zoom in |
 | `:zoomout` | Zoom out |
 | `:fit` / `:fitwidth` | Fit to width |
+| `:smartzoom` | Smart zoom (toggle margin crop) |
 | `:actualsize` | Reset to 100% |
 
 ### Search

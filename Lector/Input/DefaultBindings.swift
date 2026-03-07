@@ -21,6 +21,7 @@ enum DefaultBindings {
         (["+"],               .zoomIn),
         (["-"],               .zoomOut),
         (["="],               .fitToWidth),
+        (["w"],               .smartZoom),
         (["0"],               .actualSize),
 
         // Search

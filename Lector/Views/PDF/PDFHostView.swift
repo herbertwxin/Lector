@@ -233,6 +233,13 @@ final class LectorPDFView: PDFView {
             name: .PDFViewVisiblePagesChanged,
             object: self
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(scaleChanged(_:)),
+            name: .PDFViewScaleChanged,
+            object: self
+        )
     }
 
     @objc private func pageChanged(_ note: Notification) {
@@ -275,6 +282,14 @@ final class LectorPDFView: PDFView {
 
         DispatchQueue.main.async { [weak self] in
             self?.state?.scrollYOffset = offset
+        }
+    }
+
+    @objc private func scaleChanged(_ note: Notification) {
+        guard !isLoadingDocument else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.state?.viewScaleFactor = self.scaleFactor
         }
     }
 
