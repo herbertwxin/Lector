@@ -618,17 +618,35 @@ final class AppState {
     }
 
     var currentChapterName: String {
-        var bestLabel: String = ""
-        var bestPage: Int = -1
-        for entry in outlineCache {
-            if entry.page <= currentPage && entry.page > bestPage {
-                bestPage = entry.page
-                bestLabel = entry.label
-            } else if entry.page > currentPage {
-                break
+        guard !outlineCache.isEmpty else { return "" }
+
+        var low = 0
+        var high = outlineCache.count - 1
+        var bestIndex = -1
+
+        while low <= high {
+            let mid = low + (high - low) / 2
+            let entry = outlineCache[mid]
+
+            if entry.page <= currentPage {
+                bestIndex = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
             }
         }
-        return bestLabel
+
+        guard bestIndex != -1 else { return "" }
+
+        // Find the first entry with the same page number
+        // to match the previous logic: `entry.page > bestPage`
+        let bestPage = outlineCache[bestIndex].page
+        var firstMatchIndex = bestIndex
+        while firstMatchIndex > 0 && outlineCache[firstMatchIndex - 1].page == bestPage {
+            firstMatchIndex -= 1
+        }
+
+        return outlineCache[firstMatchIndex].label
     }
 
     // ── Chapter navigation ────────────────────────────────────────────────
