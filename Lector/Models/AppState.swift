@@ -165,28 +165,37 @@ final class AppState {
         documentURL = url
         document = doc
 
-        // Upsert document in DB
-        let checksum = Checksum.sha256(of: url) ?? ""
-        documentID = (try? database.upsertDocument(url: url, checksum: checksum)) ?? 0
-
-        // Build outline cache
+        // Build outline cache synchronously (it is relatively fast compared to checksum)
         buildOutlineCache(for: doc)
 
-        // Restore or reset view position.
-        if rememberLastPosition,
-           let pos = try? database.fetchLastPosition(docID: documentID) {
-            currentPage   = pos.page
-            scrollYOffset = pos.yOffset
-            zoomScale     = CGFloat(pos.zoom)
-            fitToWidth    = pos.fitToWidth
-        } else {
-            currentPage   = 0
-            scrollYOffset = 0
-        }
+        // Initialize view position defaults
+        currentPage   = 0
+        scrollYOffset = 0
 
-        loadAnnotations()
-        loadRecentDocuments()
         statusMessage = url.lastPathComponent
+
+        // Upsert document in DB and compute checksum on a background thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let checksum = Checksum.sha256(of: url) ?? ""
+
+            DispatchQueue.main.async {
+                guard let self = self, self.documentURL == url else { return }
+
+                self.documentID = (try? self.database.upsertDocument(url: url, checksum: checksum)) ?? 0
+
+                // Restore or reset view position now that we have the document ID.
+                if self.rememberLastPosition,
+                   let pos = try? self.database.fetchLastPosition(docID: self.documentID) {
+                    self.currentPage   = pos.page
+                    self.scrollYOffset = pos.yOffset
+                    self.zoomScale     = CGFloat(pos.zoom)
+                    self.fitToWidth    = pos.fitToWidth
+                }
+
+                self.loadAnnotations()
+                self.loadRecentDocuments()
+            }
+        }
     }
 
     func saveCurrentPosition() {
