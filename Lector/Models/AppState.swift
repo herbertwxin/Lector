@@ -439,7 +439,7 @@ final class AppState {
         case .zoomIn:
             let base = fitToWidth ? viewScaleFactor : zoomScale
             fitToWidth = false
-            zoomScale = min(base * 1.25, 10.0)
+            zoomScale = min(base * 1.25, 32.0)
         case .zoomOut:
             let base = fitToWidth ? viewScaleFactor : zoomScale
             fitToWidth = false
@@ -798,8 +798,37 @@ final class AppState {
     /// Minimum zoom ratio (2%) required before applying the margin crop.
     private static let minZoomImprovementRatio: CGFloat = 1.02
 
+    /// Samples character bounding boxes on `page` to estimate the actual
+    /// text-content width (ignoring blank margins).  Returns `nil` when
+    /// the page has no extractable characters, is image-only, or when
+    /// the text already spans the full media width.
+    private func contentWidthFromCharacters(page: PDFPage, media: CGRect) -> CGFloat? {
+        let n = page.numberOfCharacters
+        guard n > 0 else { return nil }
+
+        // Sample at most ~300 character positions evenly across the page.
+        let step = max(1, n / 300)
+        var union = CGRect.null
+        for i in stride(from: 0, to: n, by: step) {
+            let b = page.characterBounds(at: i)
+            // Skip zero-size glyphs (spaces, invisible chars, image-only pages).
+            guard b.width > 0, b.height > 0 else { continue }
+            union = union.isNull ? b : union.union(b)
+        }
+
+        guard !union.isNull, union.width > 10 else { return nil }
+        // Only useful when text is meaningfully narrower than the full page.
+        guard union.width < media.width - Self.cropBoxThreshold else { return nil }
+        return union.width
+    }
+
     /// Toggles between fit-to-width and a tighter zoom that crops
     /// whitespace margins for maximum screen utilisation.
+    ///
+    /// Detection order:
+    ///   1. PDF cropBox (zero-cost metadata, works when author set it)
+    ///   2. Character bounding-box sampling (covers academic papers / textbooks
+    ///      whose cropBox == mediaBox but have visible white margins)
     private func smartZoomToggle() {
         if fitToWidth {
             // Already fitting width → zoom in to crop margins.
@@ -810,11 +839,20 @@ final class AppState {
             let media = page.bounds(for: .mediaBox)
             let crop  = page.bounds(for: .cropBox)
 
-            // Use the crop box if it is meaningfully smaller than the media box.
-            let contentBox = (crop.width < media.width - Self.cropBoxThreshold) ? crop : media
+            // 1. Try the PDF's own crop box first (fast, exact).
+            let contentWidth: CGFloat
+            if crop.width < media.width - Self.cropBoxThreshold {
+                contentWidth = crop.width
+            } else if let charWidth = contentWidthFromCharacters(page: page, media: media) {
+                // 2. Fall back to character-bounding-box sampling for PDFs
+                //    whose cropBox == mediaBox but have real text margins.
+                contentWidth = charWidth
+            } else {
+                return   // no usable margin information found
+            }
 
-            guard contentBox.width > 0 else { return }
-            let ratio = media.width / contentBox.width   // e.g. 1.15 for 7.5% margins
+            guard contentWidth > 0 else { return }
+            let ratio = media.width / contentWidth   // e.g. 1.15 for 7.5% margins
             // Only apply if the ratio gives a noticeable improvement.
             if ratio > Self.minZoomImprovementRatio {
                 fitToWidth = false
