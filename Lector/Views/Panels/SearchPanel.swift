@@ -31,15 +31,36 @@ struct SearchPanel: View {
                     return .ignored
                 }
 
+            // Result counter / "Not found" indicator
+            if !state.searchText.isEmpty {
+                Group {
+                    if state.searchResultCount > 0 {
+                        Text("\(state.searchCurrentResult) / \(state.searchResultCount)")
+                    } else if state.searchIsComplete {
+                        Text("Not found")
+                    }
+                }
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(
+                    state.searchIsComplete && state.searchResultCount == 0
+                        ? AnyShapeStyle(Color.red.opacity(0.85))
+                        : AnyShapeStyle(.secondary)
+                )
+                .fixedSize()
+                .animation(.easeInOut(duration: 0.15), value: state.searchResultCount)
+            }
+
             Button(action: { state.execute(.prevResult) }) {
                 Image(systemName: "chevron.up")
             }
             .buttonStyle(.plain)
+            .disabled(state.searchResultCount == 0)
 
             Button(action: { state.execute(.nextResult) }) {
                 Image(systemName: "chevron.down")
             }
             .buttonStyle(.plain)
+            .disabled(state.searchResultCount == 0)
 
             Button(action: { state.execute(.closeSearch) }) {
                 Image(systemName: "xmark.circle.fill")
