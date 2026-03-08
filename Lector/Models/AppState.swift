@@ -88,6 +88,16 @@ final class AppState {
     private var detectedStructureCache: [String: [DocumentStructureItem]] = [:]
     var isDetectingStructure: Bool = false
 
+    // MARK: Citation index (inline citations → reference locations)
+    /// Maps citation keys to reference definitions. Keys are either numeric
+    /// strings ("1", "2", ...) or author–year keys like "Sargent 1991".
+    /// Populated when document loads.
+    private(set) var citationReferenceIndex: [String: IndexedReference] = [:]
+    /// Pre-computed clickable regions per page. Used for reliable hit-testing.
+    private(set) var citationRegions: [Int: [(rect: CGRect, key: String)]] = [:]
+    /// True while citation catalog and regions are being built (async). Use to show loading or diagnose timing.
+    private(set) var isIndexingCitations: Bool = false
+
     // MARK: Portal state
     var portalSourcePage: Int? = nil
     var portalSourceY: Double = 0
@@ -104,6 +114,12 @@ final class AppState {
     var rememberLastPosition: Bool {
         didSet { UserDefaults.standard.set(rememberLastPosition, forKey: "rememberLastPosition") }
     }
+    var citationDetectionEnabled: Bool = true {
+        didSet { UserDefaults.standard.set(citationDetectionEnabled, forKey: "citationDetectionEnabled") }
+    }
+    var citationTestLogEnabled: Bool = false {
+        didSet { UserDefaults.standard.set(citationTestLogEnabled, forKey: "citationTestLogEnabled") }
+    }
 
     // MARK: Init
 
@@ -111,8 +127,12 @@ final class AppState {
         self.isReadOnly = readOnly
         UserDefaults.standard.register(defaults: [
             "rememberLastPosition": true,
+            "citationDetectionEnabled": true,
+            "citationTestLogEnabled": false,
         ])
         rememberLastPosition = UserDefaults.standard.bool(forKey: "rememberLastPosition")
+        citationDetectionEnabled = UserDefaults.standard.bool(forKey: "citationDetectionEnabled")
+        citationTestLogEnabled = UserDefaults.standard.bool(forKey: "citationTestLogEnabled")
         do {
             database = try Database()
         } catch {
@@ -170,11 +190,39 @@ final class AppState {
         // Build outline cache synchronously (it is relatively fast compared to checksum)
         buildOutlineCache(for: doc)
 
+        // Index citations in background when enabled (references + precomputed regions)
+        citationReferenceIndex = [:]
+        citationRegions = [:]
+        if citationDetectionEnabled {
+            let outline = outlineCache
+            isIndexingCitations = true
+            statusMessage = "Indexing citations…"
+            // PDFKit (page.string, page.selection) is not safe from background threads; run on main.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.documentURL == url, self.citationDetectionEnabled, let doc = self.document else {
+                    self?.isIndexingCitations = false
+                    self?.statusMessage = url.lastPathComponent
+                    return
+                }
+                let refPages = CitationDetector.findReferenceListPages(document: doc, outlineCache: outline)
+                let index = CitationDetector.indexReferences(document: doc, fromPages: refPages)
+                let regions = CitationDetector.buildCitationRegions(document: doc, catalog: index, excludePages: refPages)
+                self.writeCitationTestLog(index: index, refPages: refPages)
+                guard self.documentURL == url, self.citationDetectionEnabled else { return }
+                self.citationReferenceIndex = index
+                self.citationRegions = regions
+                self.isIndexingCitations = false
+                self.statusMessage = url.lastPathComponent
+            }
+        }
+
         // Initialize view position defaults
         currentPage   = 0
         scrollYOffset = 0
 
-        statusMessage = url.lastPathComponent
+        if !citationDetectionEnabled {
+            statusMessage = url.lastPathComponent
+        }
 
         // Upsert document in DB and compute checksum on a background thread
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -200,6 +248,49 @@ final class AppState {
         }
     }
 
+    /// When citation test logging is enabled, write the current reference catalog to a file
+    /// under Application Support so it can be inspected to improve the detection algorithm.
+    private func writeCitationTestLog(index: [String: IndexedReference], refPages: Set<Int>) {
+        guard citationTestLogEnabled else { return }
+        do {
+            let fm = FileManager.default
+            let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let dir = appSupport.appendingPathComponent("Lector", isDirectory: true)
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let logURL = dir.appendingPathComponent("citation-test-log.txt")
+
+            var lines: [String] = []
+            let docPath = documentURL?.path ?? ""
+            lines.append("Document: \(docPath)")
+            let pagesDescription = refPages.sorted().map { String($0) }.joined(separator: ",")
+            lines.append("ReferencePages: \(pagesDescription)")
+            lines.append("Entries: \(index.count)")
+
+            let sorted = index.values.sorted {
+                if $0.pageIndex != $1.pageIndex { return $0.pageIndex < $1.pageIndex }
+                return $0.yOffset < $1.yOffset
+            }
+            for ref in sorted {
+                let yString = String(format: "%.1f", ref.yOffset)
+                lines.append("[\(ref.key)] p\(ref.pageIndex + 1) y=\(yString)")
+                lines.append("  \(ref.fullText)")
+            }
+            let content = lines.joined(separator: "\n") + "\n"
+            let data = content.data(using: .utf8) ?? Data()
+            if fm.fileExists(atPath: logURL.path) {
+                if let handle = try? FileHandle(forWritingTo: logURL) {
+                    handle.seekToEndOfFile()
+                    handle.write(data)
+                    handle.closeFile()
+                }
+            } else {
+                try data.write(to: logURL, options: .atomic)
+            }
+        } catch {
+            // Silent failure for test logging.
+        }
+    }
+
     func saveCurrentPosition() {
         guard documentID > 0 else { return }
         try? database.saveLastPosition(
@@ -220,6 +311,8 @@ final class AppState {
         documentID  = 0
         outlineCache = []
         detectedStructureCache.removeAll()
+        citationReferenceIndex = [:]
+        citationRegions = [:]
         bookmarks   = []
         highlights  = []
         marks       = []
@@ -593,6 +686,8 @@ final class AppState {
 
         case "help", "?":
             showHelpPanel()
+        case "citation", "citations", "cite":
+            showCitationPanel()
 
         default:
             statusMessage = "Unknown command: \(name)"
@@ -765,6 +860,7 @@ final class AppState {
             (":equation",     "Jump to equation (dropdown)"),
             (":table",        "Jump to table (dropdown)"),
             (":proposition",  "Jump to proposition (dropdown)"),
+            (":citation",     "Show citation detection stats"),
             (":",             "Open command mode"),
             ("o",             "Open document picker"),
             ("F8",            "Cycle appearance: Auto → Dark → Light"),
@@ -776,6 +872,39 @@ final class AppState {
         }
         quickSelectItems = items
         quickSelectTitle = "Keyboard Shortcuts — type to filter"
+        showQuickSelect = true
+    }
+
+    // ── Citation panel: list all refs, Enter → Google Scholar ───────────────
+
+    private func showCitationPanel() {
+        let refs = citationReferenceIndex.values.sorted { a, b in
+            if a.pageIndex != b.pageIndex { return a.pageIndex < b.pageIndex }
+            return a.yOffset < b.yOffset
+        }
+        let maxTitleLen = 320
+        let items: [QuickSelectItem] = refs.map { ref in
+            let title = ref.fullText.count <= maxTitleLen
+                ? ref.fullText
+                : String(ref.fullText.prefix(maxTitleLen - 3)) + "..."
+            let subtitle = "\(ref.key) · p.\(ref.pageIndex + 1)"
+            let fullText = ref.fullText
+            return QuickSelectItemImpl(
+                title: title,
+                subtitle: subtitle,
+                page: ref.pageIndex,
+                action: { [weak self] in
+                    let query = fullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                    let urlStr = String(format: WebEngine.scholar.urlTemplate, query)
+                    if let url = URL(string: urlStr) {
+                        NSWorkspace.shared.open(url)
+                    }
+                    self?.showQuickSelect = false
+                }
+            )
+        }
+        quickSelectItems = items
+        quickSelectTitle = "References — \(refs.count) found · Enter: Google Scholar"
         showQuickSelect = true
     }
 
@@ -1091,7 +1220,7 @@ final class AppState {
     }
 }
 
-// MARK: - QuickSelectItem protocol
+// MARK: - QuickSelectItem
 
 protocol QuickSelectItem: AnyObject {
     var title: String { get }
@@ -1114,19 +1243,4 @@ private final class QuickSelectItemImpl: QuickSelectItem {
     }
 
     func activate() { actionBlock() }
-}
-
-// MARK: - Notifications
-
-extension Notification.Name {
-    static let lectorPrint               = Notification.Name("lectorPrint")
-    static let lectorAddHighlight       = Notification.Name("lectorAddHighlight")
-    static let lectorSearchNext         = Notification.Name("lectorSearchNext")
-    static let lectorSearchPrev         = Notification.Name("lectorSearchPrev")
-    static let lectorWebSearch          = Notification.Name("lectorWebSearch")
-    static let lectorAnnotationsChanged = Notification.Name("lectorAnnotationsChanged")
-    static let lectorCopySelection      = Notification.Name("lectorCopySelection")
-    static let lectorRotate             = Notification.Name("lectorRotate")
-    static let lectorFocusPDF           = Notification.Name("lectorFocusPDF")
-    static let lectorOpenNewWindow      = Notification.Name("lectorOpenNewWindow")
 }

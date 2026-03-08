@@ -386,5 +386,183 @@ final class LectorPDFView: PDFView {
     }
 
     override var acceptsFirstResponder: Bool { true }
+
+    // MARK: - Citation handling (left click → jump, right click → Google Scholar, hover → tooltip)
+
+    private var citationTooltipWindow: NSWindow?
+    private var hoveredCitation: CitationAtPoint?
+    private var citationTrackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = citationTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let options: NSTrackingArea.Options = [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow]
+        citationTrackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
+        addTrackingArea(citationTrackingArea!)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        updateCitationHover(at: event.locationInWindow)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        updateCitationHover(at: event.locationInWindow)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        hideCitationTooltip()
+    }
+
+    private func updateCitationHover(at windowPoint: NSPoint) {
+        guard let state, let doc = document, state.citationDetectionEnabled else { hideCitationTooltip(); return }
+        guard self.window != nil else { hideCitationTooltip(); return }
+        let viewPoint = convert(windowPoint, from: nil)
+        guard let page = page(for: viewPoint, nearest: false) else { hideCitationTooltip(); return }
+        let pageIndex = doc.index(for: page)
+        let pagePoint = convert(viewPoint, to: page)
+
+        let citation: CitationAtPoint?
+        if !state.citationRegions.isEmpty {
+            citation = CitationDetector.citationAt(
+                pageIndex: pageIndex,
+                pointInPage: pagePoint,
+                regions: state.citationRegions,
+                catalog: state.citationReferenceIndex
+            )
+        } else {
+            citation = CitationDetector.citationAt(
+                document: doc,
+                page: page,
+                pointInPage: pagePoint,
+                referenceIndex: state.citationReferenceIndex
+            )
+        }
+        if let citation = citation {
+            if hoveredCitation?.key != citation.key || hoveredCitation?.fullText != citation.fullText {
+                hoveredCitation = citation
+                showCitationTooltip(citation: citation, near: windowPoint)
+            }
+        } else {
+            hideCitationTooltip()
+            hoveredCitation = nil
+        }
+    }
+
+    private func showCitationTooltip(citation: CitationAtPoint, near windowPoint: NSPoint) {
+        let text = citation.fullText
+        guard !text.isEmpty else { return }
+
+        let font = NSFont.systemFont(ofSize: 11)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let attrStr = NSAttributedString(string: text, attributes: attrs)
+        let maxWidth: CGFloat = 400
+        let size = attrStr.boundingRect(with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin]).size
+        let padding: CGFloat = 8
+        let contentSize = CGSize(width: min(size.width + padding * 2, maxWidth + padding * 2), height: size.height + padding * 2)
+
+        if citationTooltipWindow == nil {
+            let panel = NSPanel(
+                contentRect: NSRect(origin: .zero, size: contentSize),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            panel.isOpaque = true
+            panel.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.95)
+            panel.hasShadow = true
+            panel.level = .floating
+            panel.collectionBehavior = [.canJoinAllSpaces]
+            citationTooltipWindow = panel
+        }
+
+        guard let panel = citationTooltipWindow else { return }
+        let label: NSTextField = {
+            if let existing = panel.contentView?.subviews.compactMap({ $0 as? NSTextField }).first {
+                return existing
+            }
+            let tf = NSTextField(labelWithAttributedString: NSAttributedString(string: ""))
+            tf.isEditable = false
+            tf.isSelectable = true
+            tf.drawsBackground = false
+            tf.isBordered = false
+            tf.lineBreakMode = .byWordWrapping
+            tf.maximumNumberOfLines = 0
+            tf.cell?.truncatesLastVisibleLine = false
+            panel.contentView = NSView(frame: NSRect(origin: .zero, size: contentSize))
+            panel.contentView?.addSubview(tf)
+            return tf
+        }()
+        label.attributedStringValue = attrStr
+        label.frame = NSRect(x: padding, y: padding, width: contentSize.width - padding * 2, height: contentSize.height - padding * 2)
+
+        panel.setContentSize(contentSize)
+        if let window = self.window {
+            let screenPoint = window.convertPoint(toScreen: windowPoint)
+            let x = screenPoint.x
+            let y = screenPoint.y + 12
+            panel.setFrameOrigin(NSPoint(x: x, y: y))
+        }
+        panel.orderFront(nil)
+    }
+
+    private func hideCitationTooltip() {
+        citationTooltipWindow?.orderOut(nil)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if handleCitationClick(at: event.locationInWindow, rightClick: false) { return }
+        super.mouseDown(with: event)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if handleCitationClick(at: event.locationInWindow, rightClick: true) { return }
+        super.rightMouseDown(with: event)
+    }
+
+    private func handleCitationClick(at windowPoint: NSPoint, rightClick: Bool) -> Bool {
+        guard let state, let doc = document, state.citationDetectionEnabled else { return false }
+        let viewPoint = convert(windowPoint, from: nil)
+        guard let page = page(for: viewPoint, nearest: false) else { return false }
+        let pageIndex = doc.index(for: page)
+        let pagePoint = convert(viewPoint, to: page)
+
+        let citation: CitationAtPoint?
+        if !state.citationRegions.isEmpty {
+            citation = CitationDetector.citationAt(
+                pageIndex: pageIndex,
+                pointInPage: pagePoint,
+                regions: state.citationRegions,
+                catalog: state.citationReferenceIndex
+            )
+        } else {
+            citation = CitationDetector.citationAt(
+                document: doc,
+                page: page,
+                pointInPage: pagePoint,
+                referenceIndex: state.citationReferenceIndex
+            )
+        }
+        guard let citation = citation else { return false }
+
+        if rightClick {
+            let query = citation.fullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let urlStr = String(format: WebEngine.scholar.urlTemplate, query)
+            if let url = URL(string: urlStr) {
+                NSWorkspace.shared.open(url)
+            }
+            return true
+        }
+
+        guard let ref = state.citationReferenceIndex[citation.key] else { return false }
+        state.pushNavState()
+        state.currentPage = ref.pageIndex
+        state.scrollYOffset = ref.yOffset
+        return true
+    }
 }
 

@@ -35,6 +35,13 @@ struct PreferencesView: View {
                 Toggle("Remember last view position", isOn: $state.rememberLastPosition)
             }
 
+            Section("Citations") {
+                Toggle("Inline citation detection", isOn: $state.citationDetectionEnabled)
+                    .help("When enabled, left-click jumps to references, right-click searches Google Scholar, hover shows full citation. Uses more CPU when loading PDFs.")
+                Toggle("Citation test log", isOn: $state.citationTestLogEnabled)
+                    .help("When enabled, writes the detected reference catalog to Application Support/Lector/citation-test-log.txt when a document is indexed.")
+            }
+
             Section("Database") {
                 LabeledContent("Location") {
                     let appSupport = FileManager.default.urls(
