@@ -97,6 +97,8 @@ final class AppState {
     private(set) var citationRegions: [Int: [(rect: CGRect, key: String)]] = [:]
     /// True while citation catalog and regions are being built (async). Use to show loading or diagnose timing.
     private(set) var isIndexingCitations: Bool = false
+    /// In-flight indexing task — cancelled when a new document is loaded.
+    @ObservationIgnored private var citationTask: Task<Void, Never>?
 
     // MARK: Portal state
     var portalSourcePage: Int? = nil
@@ -190,29 +192,47 @@ final class AppState {
         // Build outline cache synchronously (it is relatively fast compared to checksum)
         buildOutlineCache(for: doc)
 
-        // Index citations in background when enabled (references + precomputed regions)
+        // Cancel any in-progress indexing from a previous document.
+        citationTask?.cancel()
+        citationTask = nil
         citationReferenceIndex = [:]
         citationRegions = [:]
+
         if citationDetectionEnabled {
-            let outline = outlineCache
+            let capturedDoc = doc
+            let capturedURL = url
+            let capturedOutline = outlineCache
+            let logEnabled = citationTestLogEnabled
+
             isIndexingCitations = true
             statusMessage = "Indexing citations…"
-            // PDFKit (page.string, page.selection) is not safe from background threads; run on main.
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.documentURL == url, self.citationDetectionEnabled, let doc = self.document else {
-                    self?.isIndexingCitations = false
-                    self?.statusMessage = url.lastPathComponent
-                    return
+
+            // Run the heavy PDFKit text extraction and analysis on a background thread so the
+            // UI remains responsive even for large documents (textbooks, long papers).
+            // PDFPage.string and PDFSelection.bounds are read-only and safe to call off-main.
+            citationTask = Task.detached(priority: .utility) { [weak self] in
+                let refPages = CitationDetector.findReferenceListPages(
+                    document: capturedDoc, outlineCache: capturedOutline)
+
+                guard !Task.isCancelled else { return }
+
+                let index = CitationDetector.indexReferences(document: capturedDoc, fromPages: refPages)
+
+                guard !Task.isCancelled else { return }
+
+                let regions = CitationDetector.buildCitationRegions(
+                    document: capturedDoc, catalog: index, excludePages: refPages)
+
+                guard !Task.isCancelled else { return }
+
+                await MainActor.run { [weak self] in
+                    guard let self, self.documentURL == capturedURL else { return }
+                    self.citationReferenceIndex = index
+                    self.citationRegions = regions
+                    self.isIndexingCitations = false
+                    self.statusMessage = capturedURL.lastPathComponent
+                    if logEnabled { self.writeCitationTestLog(index: index, refPages: refPages) }
                 }
-                let refPages = CitationDetector.findReferenceListPages(document: doc, outlineCache: outline)
-                let index = CitationDetector.indexReferences(document: doc, fromPages: refPages)
-                let regions = CitationDetector.buildCitationRegions(document: doc, catalog: index, excludePages: refPages)
-                self.writeCitationTestLog(index: index, refPages: refPages)
-                guard self.documentURL == url, self.citationDetectionEnabled else { return }
-                self.citationReferenceIndex = index
-                self.citationRegions = regions
-                self.isIndexingCitations = false
-                self.statusMessage = url.lastPathComponent
             }
         }
 
