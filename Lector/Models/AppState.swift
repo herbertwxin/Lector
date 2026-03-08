@@ -76,6 +76,12 @@ final class AppState {
     // MARK: Search
     var searchText: String = ""
     var isSearching: Bool = false
+    /// Total matches found so far (updated progressively as PDFKit reports them).
+    var searchResultCount: Int = 0
+    /// 1-based index of the currently highlighted match (0 = none yet).
+    var searchCurrentResult: Int = 0
+    /// True after PDFDocumentDidEndFind fires — used to show "Not found" when count == 0.
+    var searchIsComplete: Bool = false
 
     // MARK: Annotations (loaded for current doc)
     var bookmarks: [Bookmark] = []
@@ -405,6 +411,9 @@ final class AppState {
             if event.keyCode == 53 { // Escape
                 mode = .normal
                 isSearching = false
+                searchResultCount = 0
+                searchCurrentResult = 0
+                searchIsComplete = false
                 NotificationCenter.default.post(name: .lectorFocusPDF, object: self)
                 return true
             }
@@ -478,6 +487,9 @@ final class AppState {
             isSearching = false
             mode = .normal
             searchText = ""
+            searchResultCount = 0
+            searchCurrentResult = 0
+            searchIsComplete = false
 
         // Bookmarks
         case .addBookmark:

@@ -52,6 +52,12 @@ final class PDFContainerView: NSView {
     private let annotationLayer: AnnotationLayer
     private weak var state: AppState?
 
+    // MARK: Search state
+    private var searchSelections: [PDFSelection] = []
+    private var searchSelectionIndex: Int = -1
+    /// Mirrors the search text we last handled, so we can detect text changes in update().
+    private var lastSearchText: String = ""
+
     init(state: AppState) {
         self.state = state
         pdfView = LectorPDFView(state: state)
@@ -84,6 +90,16 @@ final class PDFContainerView: NSView {
     }
 
     func update(state: AppState) {
+        // When the search text changes (or search closes) clear stale results immediately
+        // so the count/index don't linger until the next PDFDocumentDidBeginFind fires.
+        let newText = state.isSearching ? state.searchText : ""
+        if newText != lastSearchText {
+            lastSearchText = newText
+            searchSelections = []
+            searchSelectionIndex = -1
+            pdfView.highlightedSelections = nil
+            state.searchIsComplete = false
+        }
         pdfView.update(state: state)
         annotationLayer.setNeedsDisplay(bounds)
     }
@@ -102,6 +118,14 @@ final class PDFContainerView: NSView {
                 self, selector: #selector(refreshAnnotations), name: name, object: nil
             )
         }
+
+        // PDFDocument search notifications (object = the PDFDocument; filtered in handlers).
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(searchDidFindMatch(_:)),
+            name: .PDFDocumentDidFindMatch, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(searchDidEnd(_:)),
+            name: .PDFDocumentDidEndFind, object: nil)
 
         // Scoped: only handle notifications originating from this window's state.
         // Passing `state` as object ensures two windows with the same PDF
@@ -169,11 +193,44 @@ final class PDFContainerView: NSView {
     }
 
     @objc private func handleSearchNext() {
-        pdfView.goToNextPage(nil)
+        guard !searchSelections.isEmpty else { return }
+        searchSelectionIndex = (searchSelectionIndex + 1) % searchSelections.count
+        let sel = searchSelections[searchSelectionIndex]
+        pdfView.go(to: sel)
+        pdfView.setCurrentSelection(sel, animate: true)
+        state?.searchCurrentResult = searchSelectionIndex + 1
     }
 
     @objc private func handleSearchPrev() {
-        pdfView.goToPreviousPage(nil)
+        guard !searchSelections.isEmpty else { return }
+        searchSelectionIndex = (searchSelectionIndex - 1 + searchSelections.count) % searchSelections.count
+        let sel = searchSelections[searchSelectionIndex]
+        pdfView.go(to: sel)
+        pdfView.setCurrentSelection(sel, animate: true)
+        state?.searchCurrentResult = searchSelectionIndex + 1
+    }
+
+    /// Appends each match PDFKit finds, highlights it, and auto-jumps to the first result.
+    @objc private func searchDidFindMatch(_ note: Notification) {
+        guard note.object as? PDFDocument === pdfView.document else { return }
+        guard let sel = note.userInfo?[PDFDocumentFoundSelectionKey] as? PDFSelection else { return }
+        searchSelections.append(sel)
+        pdfView.highlightedSelections = searchSelections
+        // Auto-navigate to the very first match as soon as it arrives.
+        if searchSelections.count == 1 {
+            searchSelectionIndex = 0
+            pdfView.go(to: sel)
+            pdfView.setCurrentSelection(sel, animate: false)
+            state?.searchCurrentResult = 1
+        }
+        state?.searchResultCount = searchSelections.count
+    }
+
+    /// Called when PDFKit has finished searching the whole document.
+    @objc private func searchDidEnd(_ note: Notification) {
+        guard note.object as? PDFDocument === pdfView.document else { return }
+        state?.searchResultCount = searchSelections.count
+        state?.searchIsComplete = true
     }
 
     @objc private func handleCopy() {
