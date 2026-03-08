@@ -338,12 +338,27 @@ final class LectorPDFView: PDFView {
             }
         }
 
-        // Page
-        if let doc = document,
-           state.currentPage >= 0,
-           state.currentPage < doc.pageCount,
-           let page = doc.page(at: state.currentPage),
-           currentPage != page {
+        // Page — prefer a precise PDFDestination when a programmatic navigation has
+        // set pendingNavigationOffset; fall back to the coarser go(to:PDFPage) for
+        // user-driven page changes (where only the page index is known).
+        if let pendingOffset = state.pendingNavigationOffset {
+            state.pendingNavigationOffset = nil
+            if let doc = document,
+               state.currentPage >= 0,
+               state.currentPage < doc.pageCount,
+               let page = doc.page(at: state.currentPage) {
+                let bounds = page.bounds(for: .mediaBox)
+                var offset = pendingOffset
+                if offset < 0 { offset = 0 }
+                if offset > Double(bounds.height) { offset = Double(bounds.height) }
+                let point = CGPoint(x: bounds.minX, y: bounds.maxY - CGFloat(offset))
+                go(to: PDFDestination(page: page, at: point))
+            }
+        } else if let doc = document,
+                  state.currentPage >= 0,
+                  state.currentPage < doc.pageCount,
+                  let page = doc.page(at: state.currentPage),
+                  currentPage != page {
             go(to: page)
         }
 
@@ -560,8 +575,7 @@ final class LectorPDFView: PDFView {
 
         guard let ref = state.citationReferenceIndex[citation.key] else { return false }
         state.pushNavState()
-        state.currentPage = ref.pageIndex
-        state.scrollYOffset = ref.yOffset
+        state.navigateToPosition(page: ref.pageIndex, yOffset: ref.yOffset)
         return true
     }
 }

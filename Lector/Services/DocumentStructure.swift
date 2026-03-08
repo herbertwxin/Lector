@@ -92,7 +92,12 @@ enum DocumentStructureDetector {
                 let pageBounds = page.bounds(for: .mediaBox)
                 let selBounds = sel.bounds(for: page)
                 // yOffset = distance from top of page (same semantics as AnnotationLayer).
-                let yOffset = Double(pageBounds.maxY - selBounds.midY)
+                // Anchor to the top edge of the caption text, then add an upward margin
+                // so that PDFKit scrolls to a point *above* the caption, making the
+                // figure/table visible rather than landing below it.  80 pt is generous
+                // enough to show a typical caption header while keeping the figure in view.
+                let margin: CGFloat = 80
+                let yOffset = Double(pageBounds.maxY - selBounds.maxY - margin)
                 let clamped = min(max(yOffset, 0), Double(pageBounds.height))
 
                 results.append(DocumentStructureItem(

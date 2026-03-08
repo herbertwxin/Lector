@@ -46,6 +46,11 @@ final class AppState {
     // MARK: Navigation
     var currentPage: Int = 0
     var scrollYOffset: Double = 0
+    /// Set immediately before changing `currentPage`/`scrollYOffset` for any programmatic
+    /// navigation that needs a precise intra-page position.  Marked @ObservationIgnored so
+    /// it doesn't trigger an extra `updateNSView` call; it is consumed inside
+    /// `PDFContainerView.update(state:)` when the subsequent observable change fires.
+    @ObservationIgnored var pendingNavigationOffset: Double? = nil
     var zoomScale: CGFloat = 1.0
     var fitToWidth: Bool = true
     /// The actual scale factor reported by PDFView (kept in sync by LectorPDFView).
@@ -377,8 +382,17 @@ final class AppState {
         if state.url != documentURL {
             openDocument(at: state.url)
         }
-        currentPage = state.page
-        scrollYOffset = state.yOffset
+        navigateToPosition(page: state.page, yOffset: state.yOffset)
+    }
+
+    /// Navigate to a precise page + intra-page offset.
+    /// Sets `pendingNavigationOffset` before the observable properties so that
+    /// `PDFContainerView.update(state:)` can apply a `PDFDestination` instead of
+    /// the coarser `go(to: PDFPage)` which always scrolls to the page top.
+    func navigateToPosition(page: Int, yOffset: Double) {
+        pendingNavigationOffset = yOffset
+        currentPage = page
+        scrollYOffset = yOffset
     }
 
     // MARK: - Key Handling
@@ -950,8 +964,7 @@ final class AppState {
                         page: item.pageIndex,
                         action: { [weak self] in
                             guard let self else { return }
-                            self.currentPage = item.pageIndex
-                            self.scrollYOffset = item.yOffset
+                            self.navigateToPosition(page: item.pageIndex, yOffset: item.yOffset)
                             self.showQuickSelect = false
                         }
                     )
@@ -1027,8 +1040,7 @@ final class AppState {
                     subtitle: "Page \(bm.page + 1)",
                     page: bm.page,
                     action: { [weak self] in
-                        self?.currentPage = bm.page
-                        self?.scrollYOffset = bm.yOffset
+                        self?.navigateToPosition(page: bm.page, yOffset: bm.yOffset)
                     }
                 )
             }
@@ -1040,8 +1052,7 @@ final class AppState {
                     subtitle: "Page \(bm.page + 1)",
                     page: bm.page,
                     action: { [weak self] in
-                        self?.currentPage = bm.page
-                        self?.scrollYOffset = bm.yOffset
+                        self?.navigateToPosition(page: bm.page, yOffset: bm.yOffset)
                     }
                 )
             }
@@ -1134,14 +1145,12 @@ final class AppState {
                 if url != documentURL {
                     openDocument(at: url)
                 }
-                currentPage = gm.page
-                scrollYOffset = gm.yOffset
+                navigateToPosition(page: gm.page, yOffset: gm.yOffset)
             }
         } else {
             if let mark = marks.first(where: { $0.symbol == symbol }) {
                 pushNavState()
-                currentPage = mark.page
-                scrollYOffset = mark.yOffset
+                navigateToPosition(page: mark.page, yOffset: mark.yOffset)
             }
         }
     }
@@ -1153,8 +1162,7 @@ final class AppState {
                 subtitle: "Page \(mark.page + 1)",
                 page: mark.page,
                 action: { [weak self] in
-                    self?.currentPage = mark.page
-                    self?.scrollYOffset = mark.yOffset
+                    self?.navigateToPosition(page: mark.page, yOffset: mark.yOffset)
                 }
             )
         }
@@ -1200,8 +1208,7 @@ final class AppState {
             if dstURL != documentURL {
                 openDocument(at: dstURL)
             }
-            currentPage = portal.dstPage
-            scrollYOffset = portal.dstY
+            navigateToPosition(page: portal.dstPage, yOffset: portal.dstY)
             zoomScale = CGFloat(portal.dstZoom)
         }
     }
