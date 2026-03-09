@@ -65,9 +65,15 @@ final class AppWindowManager {
     }
     private var entries: [Entry] = []
     private var pendingURLs: [URL] = []
+    // Set to true once the first window has registered. Before that we are
+    // still in the SwiftUI launch phase where the WindowGroup window is being
+    // created; queuing pending URLs is safer than posting a notification that
+    // would spawn a second window before the first one registers.
+    private var hasEverRegistered = false
     private init() {}
 
     func register(window: NSWindow, state: AppState) {
+        hasEverRegistered = true
         entries.removeAll { $0.window == nil || $0.state == nil || $0.state === state }
         entries.append(Entry(window: window, state: state))
 
@@ -111,10 +117,20 @@ final class AppWindowManager {
 
     func openURL(_ url: URL) {
         entries.removeAll { $0.window == nil || $0.state == nil }
-        // No registered windows yet: queue URL until the first window registers,
-        // so we can reuse that window instead of flashing an extra home window.
         if entries.isEmpty {
-            pendingURLs.append(url)
+            if hasEverRegistered {
+                // App is running but all windows were closed. Spin up a new
+                // window immediately — no SwiftUI WindowGroup window is coming.
+                NotificationCenter.default.post(
+                    name: .lectorOpenNewWindow,
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            } else {
+                // Still in the launch phase: the SwiftUI WindowGroup window is
+                // being created and will pick up this URL via register().
+                pendingURLs.append(url)
+            }
             return
         }
 
@@ -266,8 +282,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         
         // WindowWrapper handles AppWindowManager registration via WindowAccessor.
-        
+
         window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         newState.openDocument(at: url)
         if let page = startPage { newState.currentPage = page }
         if let y    = startY    { newState.scrollYOffset = y }
