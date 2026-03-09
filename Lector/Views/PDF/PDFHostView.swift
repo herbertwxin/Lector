@@ -188,7 +188,7 @@ final class PDFContainerView: NSView {
         let query = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlStr = String(format: engine.urlTemplate, query)
         if let url = URL(string: urlStr) {
-            NSWorkspace.shared.open(url)
+            DispatchQueue.global(qos: .userInitiated).async { NSWorkspace.shared.open(url) }
         }
     }
 
@@ -625,7 +625,7 @@ final class LectorPDFView: PDFView {
             let query = citation.fullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
             let urlStr = String(format: WebEngine.scholar.urlTemplate, query)
             if let url = URL(string: urlStr) {
-                NSWorkspace.shared.open(url)
+                DispatchQueue.global(qos: .userInitiated).async { NSWorkspace.shared.open(url) }
             }
             return true
         }

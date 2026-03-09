@@ -672,7 +672,7 @@ final class AppState {
             if !rest.isEmpty {
                 let q = rest.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
                 if let url = URL(string: String(format: WebEngine.scholar.urlTemplate, q)) {
-                    NSWorkspace.shared.open(url)
+                    DispatchQueue.global(qos: .userInitiated).async { NSWorkspace.shared.open(url) }
                 }
             } else {
                 execute(.webSearch(engine: .scholar))
@@ -681,7 +681,7 @@ final class AppState {
             if !rest.isEmpty {
                 let q = rest.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
                 if let url = URL(string: String(format: WebEngine.google.urlTemplate, q)) {
-                    NSWorkspace.shared.open(url)
+                    DispatchQueue.global(qos: .userInitiated).async { NSWorkspace.shared.open(url) }
                 }
             } else {
                 execute(.webSearch(engine: .google))
@@ -981,7 +981,7 @@ final class AppState {
                     let query = fullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
                     let urlStr = String(format: WebEngine.scholar.urlTemplate, query)
                     if let url = URL(string: urlStr) {
-                        NSWorkspace.shared.open(url)
+                        DispatchQueue.global(qos: .userInitiated).async { NSWorkspace.shared.open(url) }
                     }
                     self?.showQuickSelect = false
                 }
