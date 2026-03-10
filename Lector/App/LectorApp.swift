@@ -37,7 +37,6 @@ struct WindowWrapper: View {
             .frame(minWidth: 800, minHeight: 600)
             .navigationTitle(state.documentURL?.deletingPathExtension().lastPathComponent ?? "")
             .background(WindowAccessor { window in
-                guard let window else { return }
                 AppWindowManager.shared.register(window: window, state: state)
             })
             .onDisappear {
@@ -77,18 +76,26 @@ final class AppWindowManager {
         entries.removeAll { $0.window == nil || $0.state == nil || $0.state === state }
         entries.append(Entry(window: window, state: state))
 
-        // If at least one real document window already exists and there are no
-        // pending URLs waiting to be opened, then any brand-new window whose
-        // state has no document is almost certainly an extra “home” scene
-        // created by macOS when opening B/C/etc. Close it so we don’t leave
-        // stray home windows behind.
-        let hasDocumentWindow = entries.contains {
-            $0.state?.document != nil && $0.window != nil && $0.state !== state
-        }
-        if hasDocumentWindow && pendingURLs.isEmpty && state.document == nil {
-            window.close()
-            entries.removeAll { $0.window == nil || $0.state === state }
-            return
+        if state.document != nil {
+            // A document window just registered. Close any lingering blank (home)
+            // windows — handles the race where a blank window registered first
+            // (e.g. macOS created a WindowGroup scene before openURL ran).
+            let blanks = entries.filter {
+                $0.state?.document == nil && $0.window != nil && $0.state !== state
+            }
+            blanks.forEach { $0.window?.close() }
+            entries.removeAll { $0.state?.document == nil && $0.state !== state }
+        } else {
+            // A blank window registered. Close it if a document window already
+            // exists and we have nothing queued to load into it.
+            let hasDocumentWindow = entries.contains {
+                $0.state?.document != nil && $0.window != nil && $0.state !== state
+            }
+            if hasDocumentWindow && pendingURLs.isEmpty {
+                window.close()
+                entries.removeAll { $0.window == nil || $0.state === state }
+                return
+            }
         }
 
         // If the app was launched (or a URL was opened) before any window
@@ -134,15 +141,29 @@ final class AppWindowManager {
             return
         }
 
-        // If a window with this URL is already open, just bring it to front.
+        // If a window with this URL is already open, bring it to front.
         if let entry = entries.first(where: { $0.state?.documentURL == url }),
            let win = entry.window {
+            win.deminiaturize(nil)
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
-        // Otherwise, always create a new window for this URL.
+        // If a blank (home screen) window is available, reuse it instead of
+        // spawning a new one. This handles the case where macOS creates a
+        // WindowGroup scene before application(_:open:urls:) fires.
+        if let entry = entries.first(where: { $0.state?.document == nil }),
+           let state = entry.state,
+           let win = entry.window {
+            state.openDocument(at: url)
+            win.deminiaturize(nil)
+            win.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        // All existing windows have documents; create a new window.
         NotificationCenter.default.post(
             name: .lectorOpenNewWindow,
             object: nil,
@@ -152,20 +173,33 @@ final class AppWindowManager {
 
     func bringAnyWindowToFront() {
         entries.removeAll { $0.window == nil || $0.state == nil }
-        entries.first?.window?.makeKeyAndOrderFront(nil)
+        if let win = entries.first?.window {
+            win.deminiaturize(nil)
+            win.makeKeyAndOrderFront(nil)
+        }
     }
 }
 
 // MARK: - Window Accessor
 
 struct WindowAccessor: NSViewRepresentable {
-    let callback: (NSWindow?) -> Void
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async { self.callback(view.window) }
-        return view
+    let callback: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    /// updateNSView fires after layout, guaranteeing nsView.window is non-nil.
+    /// The coordinator ensures we call back exactly once per view lifetime.
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let window = nsView.window, !context.coordinator.didFire else { return }
+        context.coordinator.didFire = true
+        callback(window)
     }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        var didFire = false
+    }
 }
 
 // MARK: - Commands
