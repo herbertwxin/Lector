@@ -54,6 +54,14 @@ struct PreferencesWrapper: View {
 }
 
 // MARK: - Window Manager
+//
+// Design: pendingURLs is the *universal* handoff between openURL() and the
+// window system — at launch, during reopen, and for every subsequent Finder
+// open.  openURL() queues a URL and ensures a blank window exists (creating
+// one if needed).  The blank window drains pendingURLs the moment it
+// registers, regardless of whether that registration happens synchronously
+// inside makeKeyAndOrderFront or asynchronously on the next display frame.
+// This means we never need to race against updateNSView timing.
 
 final class AppWindowManager {
     static let shared = AppWindowManager()
@@ -63,13 +71,14 @@ final class AppWindowManager {
         weak var state: AppState?
     }
     private var entries: [Entry] = []
+    // URLs waiting to be loaded into the next available blank window.
     private var pendingURLs: [URL] = []
-    // Set to true once the first window has registered. Before that we are
-    // still in the SwiftUI launch phase where the WindowGroup window is being
-    // created; queuing pending URLs is safer than posting a notification that
-    // would spawn a second window before the first one registers.
+    // True once any window has registered — marks the end of the SwiftUI
+    // launch phase where WindowGroup creates the first scene.
     private var hasEverRegistered = false
     private init() {}
+
+    // MARK: Registration
 
     func register(window: NSWindow, state: AppState) {
         hasEverRegistered = true
@@ -77,71 +86,60 @@ final class AppWindowManager {
         entries.append(Entry(window: window, state: state))
 
         if state.document != nil {
-            // A document window just registered. Close any lingering blank (home)
-            // windows — handles the race where a blank window registered first
-            // (e.g. macOS created a WindowGroup scene before openURL ran).
-            let blanks = entries.filter {
-                $0.state?.document == nil && $0.window != nil && $0.state !== state
-            }
-            blanks.forEach { $0.window?.close() }
-            entries.removeAll { $0.state?.document == nil && $0.state !== state }
+            // Document window (e.g. opened via split/portal with a pre-loaded URL).
+            // Sweep out any stray blank scenes macOS created alongside it.
+            sweepBlankWindows(except: state)
         } else {
-            // A blank window registered. Close it if a document window already
-            // exists and we have nothing queued to load into it.
-            let hasDocumentWindow = entries.contains {
-                $0.state?.document != nil && $0.window != nil && $0.state !== state
-            }
-            if hasDocumentWindow && pendingURLs.isEmpty {
-                window.close()
-                entries.removeAll { $0.window == nil || $0.state === state }
-                return
-            }
-        }
-
-        // If the app was launched (or a URL was opened) before any window
-        // existed, pending URLs are queued here. Prefer to load the first
-        // pending URL into this brand-new, empty SwiftUI window instead of
-        // spawning an extra “home” window plus a separate document window.
-        if !pendingURLs.isEmpty {
-            var remaining = pendingURLs
-            pendingURLs = []
-
-            if state.document == nil, let first = remaining.first {
-                state.openDocument(at: first)
+            // Blank (home-screen) window.
+            if let url = pendingURLs.first {
+                // A URL is waiting — load it and bring this window to front.
+                pendingURLs.removeFirst()
+                state.openDocument(at: url)
+                window.deminiaturize(nil)
                 window.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
-                remaining.removeFirst()
+                // Dispatch any remaining pending URLs on the next run-loop turn
+                // to avoid deep re-entrant call stacks.
+                let remaining = pendingURLs
+                pendingURLs = []
+                if !remaining.isEmpty {
+                    DispatchQueue.main.async {
+                        remaining.forEach { AppWindowManager.shared.openURL($0) }
+                    }
+                }
+            } else {
+                // No pending URL. Close this window if document windows already
+                // exist; it is a stray companion scene spawned by macOS.
+                let hasDocumentWindow = entries.contains {
+                    $0.state?.document != nil && $0.window != nil && $0.state !== state
+                }
+                if hasDocumentWindow {
+                    window.close()
+                    entries.removeAll { $0.window == nil || $0.state === state }
+                }
+                // Otherwise keep it as the welcome screen.
             }
-
-            // Any additional URLs still get their own windows via openURL.
-            remaining.forEach { openURL($0) }
         }
+    }
+
+    private func sweepBlankWindows(except current: AppState) {
+        let blanks = entries.filter {
+            $0.state?.document == nil && $0.window != nil && $0.state !== current
+        }
+        blanks.forEach { $0.window?.close() }
+        entries.removeAll { $0.state?.document == nil && $0.state !== current }
     }
 
     func unregister(state: AppState) {
         entries.removeAll { $0.state === state || $0.window == nil || $0.state == nil }
     }
 
+    // MARK: URL Opening
+
     func openURL(_ url: URL) {
         entries.removeAll { $0.window == nil || $0.state == nil }
-        if entries.isEmpty {
-            if hasEverRegistered {
-                // App is running but all windows were closed. Spin up a new
-                // window immediately — no SwiftUI WindowGroup window is coming.
-                NotificationCenter.default.post(
-                    name: .lectorOpenNewWindow,
-                    object: nil,
-                    userInfo: ["url": url]
-                )
-            } else {
-                // Still in the launch phase: the SwiftUI WindowGroup window is
-                // being created and will pick up this URL via register().
-                pendingURLs.append(url)
-            }
-            return
-        }
 
-        // If a window with this URL is already open, bring it to front.
+        // Bring to front if this URL is already open.
         if let entry = entries.first(where: { $0.state?.documentURL == url }),
            let win = entry.window {
             win.deminiaturize(nil)
@@ -150,24 +148,41 @@ final class AppWindowManager {
             return
         }
 
-        // If a blank (home screen) window is available, reuse it instead of
-        // spawning a new one. This handles the case where macOS creates a
-        // WindowGroup scene before application(_:open:urls:) fires.
-        if let entry = entries.first(where: { $0.state?.document == nil }),
-           let state = entry.state,
-           let win = entry.window {
-            state.openDocument(at: url)
-            win.deminiaturize(nil)
-            win.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+        // Queue the URL.  The blank window that drains it may already be
+        // registered below, or will arrive shortly via register().
+        pendingURLs.append(url)
+
+        guard hasEverRegistered else {
+            // Launch phase: the SwiftUI WindowGroup window is being created
+            // and will drain pendingURLs when it first calls register().
             return
         }
 
-        // All existing windows have documents; create a new window.
+        // If a blank window is already registered, drain into it immediately.
+        if let entry = entries.first(where: { $0.state?.document == nil }),
+           let blankState = entry.state, let win = entry.window,
+           let first = pendingURLs.first {
+            pendingURLs.removeFirst()
+            blankState.openDocument(at: first)
+            win.deminiaturize(nil)
+            win.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            let remaining = pendingURLs
+            pendingURLs = []
+            if !remaining.isEmpty {
+                DispatchQueue.main.async {
+                    remaining.forEach { AppWindowManager.shared.openURL($0) }
+                }
+            }
+            return
+        }
+
+        // No blank window is available yet.  Create a new (initially blank)
+        // window; when it registers via WindowAccessor it will drain pendingURLs.
         NotificationCenter.default.post(
             name: .lectorOpenNewWindow,
             object: nil,
-            userInfo: ["url": url]
+            userInfo: nil   // nil = blank window; register() will load pendingURLs
         )
     }
 
@@ -188,7 +203,7 @@ struct WindowAccessor: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { NSView() }
 
     /// updateNSView fires after layout, guaranteeing nsView.window is non-nil.
-    /// The coordinator ensures we call back exactly once per view lifetime.
+    /// The coordinator ensures the callback fires exactly once per window lifetime.
     func updateNSView(_ nsView: NSView, context: Context) {
         guard let window = nsView.window, !context.coordinator.didFire else { return }
         context.coordinator.didFire = true
@@ -299,33 +314,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Multi-window support
 
     @objc private func handleOpenNewWindow(_ notification: Notification) {
-        guard let url = notification.userInfo?["url"] as? URL else { return }
-        let readOnly  = notification.userInfo?["readOnly"]  as? Bool   ?? false
-        let startPage = notification.userInfo?["page"]      as? Int
-        let startY    = notification.userInfo?["yOffset"]   as? Double
+        let url       = notification.userInfo?["url"]      as? URL
+        let readOnly  = notification.userInfo?["readOnly"] as? Bool   ?? false
+        let startPage = notification.userInfo?["page"]     as? Int
+        let startY    = notification.userInfo?["yOffset"]  as? Double
 
         let newState = AppState(readOnly: readOnly)
 
-        // Populate state BEFORE building any views. SwiftUI's first updateNSView
-        // call can fire synchronously during makeKeyAndOrderFront's layout pass —
-        // before any post-show code runs. If document is nil at that point, our
-        // register() guard mistakes this window for a stray blank scene and closes
-        // it immediately, leaving only the home-screen window macOS also spins up
-        // for every Finder file-open.
-        newState.openDocument(at: url)
-        if let page = startPage { newState.currentPage = page }
-        if let y    = startY    { newState.scrollYOffset = y }
+        if let url {
+            // Internal navigation (split, portal, "open in new window"):
+            // pre-load state so register() sees a non-nil document and never
+            // treats this window as a stray blank scene.
+            newState.openDocument(at: url)
+            if let page = startPage { newState.currentPage  = page }
+            if let y    = startY    { newState.scrollYOffset = y   }
+        }
+        // nil url → intentionally blank window; register() will drain pendingURLs.
 
-        let rootView = WindowWrapper(state: newState)
+        let rootView   = WindowWrapper(state: newState)
         let controller = NSHostingController(rootView: rootView)
-        let window = NSWindow(contentViewController: controller)
-        window.title = url.lastPathComponent
+        let window     = NSWindow(contentViewController: controller)
+        window.title   = url?.lastPathComponent ?? ""
         window.setContentSize(NSSize(width: 1024, height: 768))
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.styleMask    = [.titled, .closable, .miniaturizable, .resizable]
         window.isRestorable = false
         window.center()
 
-        // WindowWrapper handles AppWindowManager registration via WindowAccessor.
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
