@@ -305,8 +305,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let startY    = notification.userInfo?["yOffset"]   as? Double
 
         let newState = AppState(readOnly: readOnly)
-        let rootView = WindowWrapper(state: newState)
 
+        // Populate state BEFORE building any views. SwiftUI's first updateNSView
+        // call can fire synchronously during makeKeyAndOrderFront's layout pass —
+        // before any post-show code runs. If document is nil at that point, our
+        // register() guard mistakes this window for a stray blank scene and closes
+        // it immediately, leaving only the home-screen window macOS also spins up
+        // for every Finder file-open.
+        newState.openDocument(at: url)
+        if let page = startPage { newState.currentPage = page }
+        if let y    = startY    { newState.scrollYOffset = y }
+
+        let rootView = WindowWrapper(state: newState)
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
         window.title = url.lastPathComponent
@@ -314,13 +324,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isRestorable = false
         window.center()
-        
-        // WindowWrapper handles AppWindowManager registration via WindowAccessor.
 
+        // WindowWrapper handles AppWindowManager registration via WindowAccessor.
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        newState.openDocument(at: url)
-        if let page = startPage { newState.currentPage = page }
-        if let y    = startY    { newState.scrollYOffset = y }
     }
 }
