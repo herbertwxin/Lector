@@ -13,4 +13,6 @@ extension Notification.Name {
     static let lectorRotate              = Notification.Name("lectorRotate")
     static let lectorFocusPDF            = Notification.Name("lectorFocusPDF")
     static let lectorOpenNewWindow       = Notification.Name("lectorOpenNewWindow")
+    /// Scroll the PDF view by a pixel delta. UserInfo: ["delta": CGFloat, "smooth": Bool]
+    static let lectorScrollBy            = Notification.Name("lectorScrollBy")
 }
