@@ -76,7 +76,13 @@ struct QuickSelectPanel: View {
                 }
             }
         }
-        .onAppear { filterFocused = true }
+        .onAppear {
+            filterFocused = true
+            if !state.quickSelectInitialFilter.isEmpty {
+                filter = state.quickSelectInitialFilter
+                state.quickSelectInitialFilter = ""
+            }
+        }
         .onKeyPress(.escape) {
             state.showQuickSelect = false
             return .handled

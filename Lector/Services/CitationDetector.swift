@@ -672,7 +672,7 @@ enum CitationDetector {
 
     // MARK: - Build Citation Regions (pre-computed clickable areas)
 
-    /// Pre-computes clickable regions for each citation in the document.
+    /// Pre-computes hover regions for each citation in the document.
     /// Uses the catalog from indexReferences to search for inline citations
     /// and get their bounding rects via PDFSelection. More reliable than
     /// characterIndex(at:) at interaction time.
@@ -690,32 +690,36 @@ enum CitationDetector {
             guard !excludePages.contains(pageIdx) else { continue }
             guard let page = document.page(at: pageIdx) else { continue }
             let pageString = page.string ?? ""
-            let nsString = pageString as NSString
-            let length = nsString.length
+            let length = (pageString as NSString).length
             guard length > 0 else { continue }
 
             var pageRegions: [(rect: CGRect, key: String)] = []
+            let fullRange = NSRange(location: 0, length: length)
 
-            for (key, _) in catalog {
-                // 1) Numeric keys: search for "[1]", "[2]", etc.
-                if Int(key) != nil {
-                    let searchStr = "[\(key)]"
-                    var searchStart = 0
-                    while searchStart < length {
-                        let range = nsString.range(of: searchStr, options: [], range: NSRange(location: searchStart, length: length - searchStart))
-                        guard range.location != NSNotFound else { break }
-                        if let sel = page.selection(for: range),
-                           let pageForSel = sel.pages.first,
-                           document.index(for: pageForSel) == pageIdx {
-                            let rect = sel.bounds(for: pageForSel)
-                            pageRegions.append((rect, key))
-                        }
-                        searchStart = range.location + range.length
-                    }
-                    continue
+            // 1) Numeric citations: scan the full page for all [n], [n,n,n] bracket groups at once.
+            //    Searching for literal "[1]" would miss "[1,2,3]" — using inlineCitationRegex
+            //    captures all forms and lets us add a region per number within each bracket.
+            let bracketMatches = inlineCitationRegex.matches(in: pageString, options: [], range: fullRange)
+            for match in bracketMatches {
+                guard let sel = page.selection(for: match.range),
+                      let pageForSel = sel.pages.first,
+                      document.index(for: pageForSel) == pageIdx else { continue }
+                let rect = sel.bounds(for: pageForSel)
+                guard let numRange = Range(match.range(at: 1), in: pageString) else { continue }
+                let inside = String(pageString[numRange])
+                let numbers = inside.split(separator: ",")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .compactMap { Int($0) }
+                for num in numbers {
+                    let key = String(num)
+                    guard catalog[key] != nil else { continue }
+                    pageRegions.append((rect, key))
                 }
+            }
 
-                // 2) Author-year keys: "Sargent 1991" or "Del Negro 2015" -> search for author near year
+            // 2) Author-year keys: "Sargent 1991" or "Del Negro 2015" -> search for author near year.
+            for (key, _) in catalog {
+                guard Int(key) == nil else { continue }  // numeric keys handled above
                 let parts = key.split(separator: " ")
                 guard parts.count >= 2, let year = parts.last else { continue }
                 let author = parts.dropLast().joined(separator: " ")
@@ -723,11 +727,9 @@ enum CitationDetector {
                 // Match author + up to 25 chars (et al., and, etc.) + year. Avoids spanning sentences.
                 let pattern = "\(escapedAuthor).{0,25}\(year)"
                 guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { continue }
-                let fullRange = NSRange(location: 0, length: length)
                 let matches = regex.matches(in: pageString, options: [], range: fullRange)
                 for match in matches {
-                    let range = match.range
-                    if let sel = page.selection(for: range),
+                    if let sel = page.selection(for: match.range),
                        let pageForSel = sel.pages.first,
                        document.index(for: pageForSel) == pageIdx {
                         let rect = sel.bounds(for: pageForSel)

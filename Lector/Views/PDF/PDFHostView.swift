@@ -496,7 +496,7 @@ final class LectorPDFView: PDFView {
 
     override var acceptsFirstResponder: Bool { true }
 
-    // MARK: - Citation handling (left click → jump, right click → Google Scholar, hover → tooltip)
+    // MARK: - Citation handling (hover → tooltip; 'c' key → open references panel)
 
     private var citationTooltipWindow: NSWindow?
     private var hoveredCitation: CitationAtPoint?
@@ -554,17 +554,18 @@ final class LectorPDFView: PDFView {
         if let citation = citation {
             if hoveredCitation?.key != citation.key || hoveredCitation?.fullText != citation.fullText {
                 hoveredCitation = citation
+                state.hoveredCitation = citation
                 showCitationTooltip(citation: citation, near: windowPoint)
             }
         } else {
             hideCitationTooltip()
-            hoveredCitation = nil
         }
     }
 
     private func showCitationTooltip(citation: CitationAtPoint, near windowPoint: NSPoint) {
-        let text = citation.fullText
-        guard !text.isEmpty else { return }
+        let bodyText = citation.fullText
+        guard !bodyText.isEmpty else { return }
+        let text = bodyText + "\n— Press 'c' to open in References"
 
         let font = NSFont.systemFont(ofSize: 11)
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
@@ -621,56 +622,8 @@ final class LectorPDFView: PDFView {
 
     private func hideCitationTooltip() {
         citationTooltipWindow?.orderOut(nil)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        if handleCitationClick(at: event.locationInWindow, rightClick: false) { return }
-        super.mouseDown(with: event)
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        if handleCitationClick(at: event.locationInWindow, rightClick: true) { return }
-        super.rightMouseDown(with: event)
-    }
-
-    private func handleCitationClick(at windowPoint: NSPoint, rightClick: Bool) -> Bool {
-        guard let state, let doc = document, state.citationDetectionEnabled else { return false }
-        let viewPoint = convert(windowPoint, from: nil)
-        guard let page = page(for: viewPoint, nearest: false) else { return false }
-        let pageIndex = doc.index(for: page)
-        let pagePoint = convert(viewPoint, to: page)
-
-        let citation: CitationAtPoint?
-        if !state.citationRegions.isEmpty {
-            citation = CitationDetector.citationAt(
-                pageIndex: pageIndex,
-                pointInPage: pagePoint,
-                regions: state.citationRegions,
-                catalog: state.citationReferenceIndex
-            )
-        } else {
-            citation = CitationDetector.citationAt(
-                document: doc,
-                page: page,
-                pointInPage: pagePoint,
-                referenceIndex: state.citationReferenceIndex
-            )
-        }
-        guard let citation = citation else { return false }
-
-        if rightClick {
-            let query = citation.fullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-            let urlStr = String(format: WebEngine.scholar.urlTemplate, query)
-            if let url = URL(string: urlStr) {
-                DispatchQueue.global(qos: .userInitiated).async { NSWorkspace.shared.open(url) }
-            }
-            return true
-        }
-
-        guard let ref = state.citationReferenceIndex[citation.key] else { return false }
-        state.pushNavState()
-        state.navigateToPosition(page: ref.pageIndex, yOffset: ref.yOffset)
-        return true
+        hoveredCitation = nil
+        state?.hoveredCitation = nil
     }
 }
 
