@@ -28,12 +28,49 @@ struct CitationAtPoint: Sendable {
 /// Based on sioyek-old's index_references and get_reference_text_at_position.
 enum CitationDetector {
 
-    /// Inline citation pattern: [1], [2], [1,2,3], [1, 2, 3]
-    /// Currently used via manual parsing, but kept for future refinements.
+    /// Inline citation pattern supporting:
+    ///   - Single:           [1]
+    ///   - Comma list:       [1,2,3]  or  [1, 2, 3]
+    ///   - Semicolon list:   [1;2;3]  or  [1; 2; 3]  (some CS/IEEE styles)
+    ///   - Hyphen range:     [1-3]    or  [1–5]  (en-dash)
+    ///   - Mixed:            [1,3-5,8]
+    ///   - Loose spacing:    [ 1 ]    or  [ 1, 2 ]
+    ///
+    /// Capture group 1 is the raw interior string; pass to expandNumericRange() to get [Int].
     private static let inlineCitationRegex = try! NSRegularExpression(
-        pattern: "\\[([0-9]+(?:\\s*,\\s*[0-9]+)*)\\]",
+        pattern: #"\[\s*([0-9]+(?:\s*[-–,;]\s*[0-9]+)*)\s*\]"#,
         options: []
     )
+
+    /// Matches a single range segment such as "1-3" or "1–5" (en-dash).
+    private static let numericRangeRegex = try! NSRegularExpression(
+        pattern: #"^(\d+)\s*[-–]\s*(\d+)$"#,
+        options: []
+    )
+
+    /// Expands the raw interior of a citation bracket (e.g. "1, 3-5; 7") into individual
+    /// citation numbers.  Handles comma and semicolon separators and hyphen/en-dash ranges.
+    private static func expandNumericRange(from inside: String) -> [Int] {
+        var result: [Int] = []
+        let parts = inside.components(separatedBy: CharacterSet(charactersIn: ",;"))
+        for part in parts {
+            let trimmed = part.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            let nsRange = NSRange(trimmed.startIndex..., in: trimmed)
+            if let m = numericRangeRegex.firstMatch(in: trimmed, range: nsRange),
+               m.numberOfRanges == 3,
+               let r1 = Range(m.range(at: 1), in: trimmed),
+               let r2 = Range(m.range(at: 2), in: trimmed),
+               let start = Int(trimmed[r1]),
+               let end   = Int(trimmed[r2]),
+               start <= end, end - start < 50 {          // cap range expansion at 50
+                result.append(contentsOf: start...end)
+            } else if let num = Int(trimmed) {
+                result.append(num)
+            }
+        }
+        return result
+    }
 
     /// Reference definition at start of line: [1] or [1, 2, 3] followed by citation text.
     /// Allows up to 3 chars before [ (e.g. line numbers, spaces) per sioyek heuristic.
@@ -168,6 +205,50 @@ enum CitationDetector {
         return beforeComma
     }
 
+    /// Extracts the first author's surname from a **first-name-first** bibliography entry,
+    /// e.g. "Daron Acemoglu and Simon Johnson. Power and Progress. PublicAffairs, 2023."
+    /// Complements `extractSurname` which handles inverted format ("Acemoglu, Daron ...").
+    /// Returns the last word of the first-author name segment, or nil if extraction fails.
+    static func extractSurnameFirstNameFirst(from line: String) -> String? {
+        // Find the end of the first author's name segment.
+        // Separators: " and " (co-author list), "," (co-author comma), ". " (title start), "(" (year/paren).
+        var endIdx = line.endIndex
+        if let r = line.range(of: " and ", options: .caseInsensitive), r.lowerBound < endIdx {
+            endIdx = r.lowerBound
+        }
+        if let r = line.firstIndex(of: ","), r < endIdx {
+            endIdx = r
+        }
+        if let r = line.range(of: ". "), r.lowerBound < endIdx {
+            endIdx = r.lowerBound
+        }
+        if let r = line.firstIndex(of: "("), r < endIdx {
+            endIdx = r
+        }
+
+        let firstAuthorStr = String(line[..<endIdx]).trimmingCharacters(in: .whitespaces)
+        guard !firstAuthorStr.isEmpty else { return nil }
+
+        let tokens = firstAuthorStr.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+        // Need at least "FirstName LastName"; cap at 5 to avoid matching body-text sentences.
+        guard tokens.count >= 2, tokens.count <= 5 else { return nil }
+
+        // Surname is the last token; validate it.
+        let surname = tokens.last!
+        guard let firstChar = surname.first, firstChar.isUppercase else { return nil }
+        guard !surname.unicodeScalars.contains(where: { CharacterSet.decimalDigits.contains($0) }) else { return nil }
+        // Reject single initials like "A." or short suffixes like "Jr."
+        if surname.count <= 3 && surname.hasSuffix(".") { return nil }
+        if notSurnames.contains(surname.lowercased()) { return nil }
+
+        // First token (first name) must also start uppercase and not be a stopword.
+        guard let firstToken = tokens.first,
+              let firstTokenFirst = firstToken.first, firstTokenFirst.isUppercase,
+              !notSurnames.contains(firstToken.lowercased()) else { return nil }
+
+        return surname
+    }
+
     /// Extracts a 4-digit year (19xx / 20xx) from accumulated bibliography entry text.
     /// Tries multiple patterns in order of specificity to handle AEA format, author-year
     /// format, working papers, and journal articles.
@@ -181,14 +262,14 @@ enum CitationDetector {
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
-        // 2. " YYYY." — space before year, period after (working papers, end-of-entry)
-        if let regex = try? NSRegularExpression(pattern: #"\s((19|20)\d{2})\."#),
+        // 2. " YYYY[a-z]?." — space before year, optional letter suffix (e.g. "1980a."), period after
+        if let regex = try? NSRegularExpression(pattern: #"\s((19|20)\d{2})[a-z]?\."#),
            let match = regex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
-        // 3. ". YYYY." — period before and after (AEA format mid-entry)
-        if let regex = try? NSRegularExpression(pattern: #"\.\s*((19|20)\d{2})\."#),
+        // 3. ". YYYY[a-z]?." — period before and after (AEA format mid-entry, with optional letter suffix)
+        if let regex = try? NSRegularExpression(pattern: #"\.\s*((19|20)\d{2})[a-z]?\."#),
            let match = regex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
@@ -199,8 +280,9 @@ enum CitationDetector {
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
-        // 5. Any 4-digit year — last resort
-        if let regex = try? NSRegularExpression(pattern: #"\b((?:19|20)\d{2})\b"#),
+        // 5. Any 4-digit year not immediately followed by another digit — last resort.
+        //    Using (?!\d) instead of \b so "1980a" still matches (word boundary fails there).
+        if let regex = try? NSRegularExpression(pattern: #"((?:19|20)\d{2})(?!\d)"#),
            let match = regex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
@@ -289,7 +371,9 @@ enum CitationDetector {
             for line in lines {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.isEmpty else { continue }
-                if isNewEntryStart(trimmed), extractSurname(from: trimmed) != nil { return pIdx }
+                if isNewEntryStart(trimmed),
+                   extractSurname(from: trimmed) != nil
+                       || extractSurnameFirstNameFirst(from: trimmed) != nil { return pIdx }
                 break  // Only check first non-empty line per page
             }
         }
@@ -542,8 +626,12 @@ enum CitationDetector {
                 lineForAuthor = String(trimmed[numPrefix.upperBound...]).trimmingCharacters(in: .whitespaces)
             }
 
-            // 2) New author-year entry: starts with uppercase (or known lower prefix), has a comma
-            if isNewEntryStart(lineForAuthor), let surname = extractSurname(from: lineForAuthor) {
+            // 2) New author-year entry: starts with uppercase (or known lower prefix).
+            //    Try inverted format first ("Acemoglu, Daron …"), then first-name-first
+            //    ("Daron Acemoglu and Simon Johnson. …") as a fallback.
+            if isNewEntryStart(lineForAuthor),
+               let surname = extractSurname(from: lineForAuthor)
+                             ?? extractSurnameFirstNameFirst(from: lineForAuthor) {
                 flushCurrentEntry()
                 let yOffset = Double(pageBounds.maxY - currentY)
                 currentEntry = (surname, yOffset, [trimmed])
@@ -696,9 +784,9 @@ enum CitationDetector {
             var pageRegions: [(rect: CGRect, key: String)] = []
             let fullRange = NSRange(location: 0, length: length)
 
-            // 1) Numeric citations: scan the full page for all [n], [n,n,n] bracket groups at once.
-            //    Searching for literal "[1]" would miss "[1,2,3]" — using inlineCitationRegex
-            //    captures all forms and lets us add a region per number within each bracket.
+            // 1) Numeric citations: scan the full page for all bracket groups at once.
+            //    inlineCitationRegex now handles [1], [1,2,3], [1-3], [1;2], [ 1 ], etc.
+            //    expandNumericRange() turns the raw interior into individual keys.
             let bracketMatches = inlineCitationRegex.matches(in: pageString, options: [], range: fullRange)
             for match in bracketMatches {
                 guard let sel = page.selection(for: match.range),
@@ -707,25 +795,24 @@ enum CitationDetector {
                 let rect = sel.bounds(for: pageForSel)
                 guard let numRange = Range(match.range(at: 1), in: pageString) else { continue }
                 let inside = String(pageString[numRange])
-                let numbers = inside.split(separator: ",")
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                    .compactMap { Int($0) }
-                for num in numbers {
+                for num in expandNumericRange(from: inside) {
                     let key = String(num)
                     guard catalog[key] != nil else { continue }
                     pageRegions.append((rect, key))
                 }
             }
 
-            // 2) Author-year keys: "Sargent 1991" or "Del Negro 2015" -> search for author near year.
+            // 2) Author-year keys: "Sargent 1991" or "Del Negro 2015".
+            //    Pattern excludes sentence-ending punctuation (., !) and newlines so we don't
+            //    accidentally span across sentences.  Window is 60 chars to cover long
+            //    co-author lists like "(Smith, Jones, Brown, Wilson, and Taylor 2020)".
             for (key, _) in catalog {
                 guard Int(key) == nil else { continue }  // numeric keys handled above
                 let parts = key.split(separator: " ")
                 guard parts.count >= 2, let year = parts.last else { continue }
                 let author = parts.dropLast().joined(separator: " ")
                 let escapedAuthor = NSRegularExpression.escapedPattern(for: author)
-                // Match author + up to 25 chars (et al., and, etc.) + year. Avoids spanning sentences.
-                let pattern = "\(escapedAuthor).{0,25}\(year)"
+                let pattern = "\(escapedAuthor)[^.!\\n]{0,60}\(year)"
                 guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { continue }
                 let matches = regex.matches(in: pageString, options: [], range: fullRange)
                 for match in matches {
@@ -746,6 +833,8 @@ enum CitationDetector {
     }
 
     /// Hit-test: find which citation (if any) contains the given point in page coordinates.
+    /// A small vertical tolerance (2 pt) is applied so that superscript-style citations
+    /// or tightly-spaced brackets are easier to hover over.
     static func citationAt(
         pageIndex: Int,
         pointInPage: NSPoint,
@@ -754,8 +843,10 @@ enum CitationDetector {
     ) -> CitationAtPoint? {
         guard let pageRegions = regions[pageIndex] else { return nil }
         let cgPoint = CGPoint(x: pointInPage.x, y: pointInPage.y)
+        let tolerance: CGFloat = 2.0
         for (rect, key) in pageRegions {
-            if rect.contains(cgPoint), let ref = catalog[key] {
+            let expanded = rect.insetBy(dx: 0, dy: -tolerance)
+            if expanded.contains(cgPoint), let ref = catalog[key] {
                 return CitationAtPoint(key: key, fullText: ref.fullText)
             }
         }
@@ -840,34 +931,36 @@ enum CitationDetector {
         let snippet = nsString.substring(with: range)
         guard snippet.hasPrefix("["), snippet.hasSuffix("]") else { return nil }
 
-        let inside = String(snippet.dropFirst().dropLast())
-        let numbers = inside
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .compactMap { Int($0) }
-
+        // Strip outer brackets and trim; use expandNumericRange to handle [1-3], [1;2], etc.
+        let inside = String(snippet.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+        let numbers = expandNumericRange(from: inside)
         guard !numbers.isEmpty else { return nil }
 
-        // Determine which number the user clicked on (character offset within the bracket)
-        let clickedOffset = charIndex - searchStart
-        var accumulated = 0
+        // Determine which segment of the interior string the click lands in by walking
+        // the comma/semicolon-separated parts and tracking character offsets.
+        // clickedOffset is relative to the opening '[', so subtract 1 for '[' itself.
+        let insideOffset = charIndex - searchStart - 1
         var selectedNum = numbers[0]
-        for (i, num) in numbers.enumerated() {
-            let numLen = String(num).count
-            if clickedOffset >= accumulated && clickedOffset < accumulated + numLen {
-                selectedNum = numbers[i]
-                break
+        var accumulated = 0
+        let rawParts = inside.components(separatedBy: CharacterSet(charactersIn: ",;"))
+        outer: for part in rawParts {
+            let partLen = part.utf16.count
+            if insideOffset < accumulated + partLen {
+                let segNums = expandNumericRange(from: part.trimmingCharacters(in: .whitespaces))
+                if let n = segNums.first { selectedNum = n }
+                break outer
             }
-            accumulated += numLen
-            // Roughly account for comma/space between numbers.
-            if i < numbers.count - 1 {
-                accumulated += 1
-            }
+            accumulated += partLen + 1  // +1 for the separator character
         }
 
+        // Look up the chosen number; fall back to any number that has a catalog entry.
         let key = String(selectedNum)
-        guard let ref = referenceIndex[key] else { return nil }
-        return CitationAtPoint(key: key, fullText: ref.fullText)
+        if let ref = referenceIndex[key] { return CitationAtPoint(key: key, fullText: ref.fullText) }
+        for num in numbers {
+            let k = String(num)
+            if let ref = referenceIndex[k] { return CitationAtPoint(key: k, fullText: ref.fullText) }
+        }
+        return nil
     }
 
     // MARK: - Author–year citation: (Sargent, 1991; Branch, 2006) etc.
@@ -913,9 +1006,10 @@ enum CitationDetector {
     private static func authorYearReferenceWithPeriod(in line: String) -> (String, String)? {
         let ns = line as NSString
         let fullRange = NSRange(location: 0, length: ns.length)
-        // Prefer ". YYYY. " then fall back to " YYYY. " (name without period before year, e.g. "Patterson 2015.").
+        // Prefer ". YYYY[a-z]?. " then fall back to " YYYY[a-z]?. " (name without period before year).
+        // The optional [a-z] suffix handles letter-disambiguated years like "1980a" (Ramey, AEA style).
         // Restrict years to 19xx / 20xx to avoid treating issue numbers like 7540 or 7676 as years.
-        for (pattern, requireLetterBefore) in [(#"\.\s*((?:19|20)\d{2})\s*\."#, false), (#"\s+((?:19|20)\d{2})\s*\."#, true)] {
+        for (pattern, requireLetterBefore) in [(#"\.\s*((?:19|20)\d{2})[a-z]?\s*\."#, false), (#"\s+((?:19|20)\d{2})[a-z]?\s*\."#, true)] {
             guard let regex = try? NSRegularExpression(pattern: pattern),
                   let match = regex.firstMatch(in: line, options: [], range: fullRange),
                   match.numberOfRanges >= 2,
