@@ -75,6 +75,9 @@ enum Command: Equatable {
     case toggleDarkMode
     case quit
 
+    // Citations
+    case openCitationPanel
+
     // MARK: - Needs-char flag
 
     /// True if the command requires a follow-up character from the user.

@@ -66,5 +66,8 @@ enum DefaultBindings {
         // Web search
         (["<C-f>"],           .webSearch(engine: .scholar)),
         (["<A-f>"],           .webSearch(engine: .google)),
+
+        // Citations
+        (["c"],               .openCitationPanel),
     ]
 }

@@ -110,6 +110,11 @@ final class AppState {
     private(set) var isIndexingCitations: Bool = false
     /// In-flight indexing task — cancelled when a new document is loaded.
     @ObservationIgnored private var citationTask: Task<Void, Never>?
+    /// Citation currently under the mouse cursor (set by LectorPDFView on hover).
+    /// Not observed by SwiftUI — updated on every mouse-move without triggering renders.
+    @ObservationIgnored var hoveredCitation: CitationAtPoint? = nil
+    /// Pre-fill string for the next QuickSelectPanel that opens (consumed in onAppear).
+    @ObservationIgnored var quickSelectInitialFilter: String = ""
 
     // MARK: Portal state
     var portalSourcePage: Int? = nil
@@ -557,6 +562,12 @@ final class AppState {
             }
         case .quit:
             NSApplication.shared.terminate(nil)
+
+        // Citations
+        case .openCitationPanel:
+            if let hovered = hoveredCitation {
+                showCitationPanel(preFilter: hovered.key)
+            }
         }
     }
 
@@ -945,13 +956,15 @@ final class AppState {
             // Web search
             ("⌃f",            "Search selection on Google Scholar"),
             ("⌥f",            "Search selection on Google"),
+            // Citations
+            ("c",             "Open hovered citation in References panel"),
+            (":citation",     "Browse all references (Enter: Scholar)"),
             // UI
             ("t",             "Toggle table of contents"),
             (":figure",       "Jump to figure (dropdown)"),
             (":equation",     "Jump to equation (dropdown)"),
             (":table",        "Jump to table (dropdown)"),
             (":proposition",  "Jump to proposition (dropdown)"),
-            (":citation",     "Show citation detection stats"),
             (":",             "Open command mode"),
             ("o",             "Open document picker"),
             ("F8",            "Cycle appearance: Auto → Dark → Light"),
@@ -968,7 +981,7 @@ final class AppState {
 
     // ── Citation panel: list all refs, Enter → Google Scholar ───────────────
 
-    private func showCitationPanel() {
+    private func showCitationPanel(preFilter: String = "") {
         let refs = citationReferenceIndex.values.sorted { a, b in
             if a.pageIndex != b.pageIndex { return a.pageIndex < b.pageIndex }
             return a.yOffset < b.yOffset
@@ -996,6 +1009,9 @@ final class AppState {
         }
         quickSelectItems = items
         quickSelectTitle = "References — \(refs.count) found · Enter: Google Scholar"
+        if !preFilter.isEmpty {
+            quickSelectInitialFilter = preFilter
+        }
         showQuickSelect = true
     }
 

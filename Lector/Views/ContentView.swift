@@ -113,6 +113,7 @@ struct WelcomeView: View {
                 KeyHintRow(key: "h + char", desc: "Highlight selection")
                 KeyHintRow(key: "m + char", desc: "Set mark")
                 KeyHintRow(key: "` + char", desc: "Jump to mark")
+                KeyHintRow(key: "c",        desc: "Open hovered citation in References")
                 KeyHintRow(key: ":",        desc: "Command mode")
             }
 
