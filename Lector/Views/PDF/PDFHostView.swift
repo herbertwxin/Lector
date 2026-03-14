@@ -140,6 +140,7 @@ final class PDFContainerView: NSView {
             (#selector(handleRotate(_:)),       .lectorRotate),
             (#selector(handlePrint),            .lectorPrint),
             (#selector(focusPDF),               .lectorFocusPDF),
+            (#selector(handleScrollBy(_:)),     .lectorScrollBy),
         ]
         for (sel, name) in scoped {
             NotificationCenter.default.addObserver(self, selector: sel, name: name, object: state)
@@ -152,6 +153,12 @@ final class PDFContainerView: NSView {
 
     @objc private func focusPDF() {
         window?.makeFirstResponder(pdfView)
+    }
+
+    @objc private func handleScrollBy(_ note: Notification) {
+        guard let delta = note.userInfo?["delta"] as? CGFloat,
+              let smooth = note.userInfo?["smooth"] as? Bool else { return }
+        pdfView.performScroll(by: delta, smooth: smooth)
     }
 
     @objc private func refreshAnnotations() {
@@ -395,12 +402,6 @@ final class LectorPDFView: PDFView {
             }
         }
 
-        // Keyboard scroll — apply any pending delta directly to the scroll view.
-        if let delta = state.pendingScrollDelta {
-            state.pendingScrollDelta = nil
-            performScroll(by: delta, smooth: state.smoothScrollEnabled)
-        }
-
         // Page — prefer a precise PDFDestination when a programmatic navigation has
         // set pendingNavigationOffset; fall back to the coarser go(to:PDFPage) for
         // user-driven page changes (where only the page index is known).
@@ -461,7 +462,7 @@ final class LectorPDFView: PDFView {
     /// Scroll the PDF document view by `delta` points (positive = down / further into doc).
     /// Uses the scroll view's native coordinate space, so PDFKit handles page boundaries
     /// seamlessly in continuous-scroll mode.
-    private func performScroll(by delta: CGFloat, smooth: Bool) {
+    fileprivate func performScroll(by delta: CGFloat, smooth: Bool) {
         guard let docView = documentView,
               let scrollView = docView.enclosingScrollView else { return }
 

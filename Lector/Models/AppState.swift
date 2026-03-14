@@ -137,12 +137,6 @@ final class AppState {
         didSet { UserDefaults.standard.set(smoothScrollEnabled, forKey: "smoothScrollEnabled") }
     }
 
-    // MARK: Pending scroll
-    /// Delta (in scroll-view points) to apply on the next `LectorPDFView.update` call.
-    /// @ObservationIgnored so it doesn't trigger an extra updateNSView on its own;
-    /// it is consumed when the accompanying `scrollYOffset` change fires the update.
-    @ObservationIgnored var pendingScrollDelta: CGFloat? = nil
-
     // MARK: Init
 
     init(readOnly: Bool = false) {
@@ -455,11 +449,11 @@ final class AppState {
             let pageCount = document?.pageCount ?? 0
             currentPage = max(0, min(p, pageCount - 1))
         case .scrollDown(let d):
-            pendingScrollDelta = d
-            scrollYOffset += d  // estimated; triggers updateNSView; corrected by visiblePagesChanged
+            NotificationCenter.default.post(name: .lectorScrollBy, object: self,
+                                            userInfo: ["delta": d, "smooth": smoothScrollEnabled])
         case .scrollUp(let d):
-            pendingScrollDelta = -d
-            scrollYOffset -= d  // estimated; triggers updateNSView; corrected by visiblePagesChanged
+            NotificationCenter.default.post(name: .lectorScrollBy, object: self,
+                                            userInfo: ["delta": -d, "smooth": smoothScrollEnabled])
         case .nextPage:
             pushNavState()
             currentPage = min(currentPage + 1, (document?.pageCount ?? 1) - 1)
