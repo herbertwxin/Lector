@@ -395,6 +395,12 @@ final class LectorPDFView: PDFView {
             }
         }
 
+        // Keyboard scroll — apply any pending delta directly to the scroll view.
+        if let delta = state.pendingScrollDelta {
+            state.pendingScrollDelta = nil
+            performScroll(by: delta, smooth: state.smoothScrollEnabled)
+        }
+
         // Page — prefer a precise PDFDestination when a programmatic navigation has
         // set pendingNavigationOffset; fall back to the coarser go(to:PDFPage) for
         // user-driven page changes (where only the page index is known).
@@ -447,6 +453,36 @@ final class LectorPDFView: PDFView {
         case .dark:  appearance = NSAppearance(named: .darkAqua)
         case .light: appearance = NSAppearance(named: .aqua)
         case .auto:  appearance = nil
+        }
+    }
+
+    // MARK: - Keyboard scroll
+
+    /// Scroll the PDF document view by `delta` points (positive = down / further into doc).
+    /// Uses the scroll view's native coordinate space, so PDFKit handles page boundaries
+    /// seamlessly in continuous-scroll mode.
+    private func performScroll(by delta: CGFloat, smooth: Bool) {
+        guard let docView = documentView,
+              let scrollView = docView.enclosingScrollView else { return }
+
+        let currentOrigin = scrollView.contentView.bounds.origin
+        let contentHeight = docView.frame.height
+        let visibleHeight = scrollView.contentSize.height
+        let maxY = max(0, contentHeight - visibleHeight)
+        let targetY = min(max(0, currentOrigin.y + delta), maxY)
+        let target = CGPoint(x: currentOrigin.x, y: targetY)
+
+        if smooth {
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.12
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                scrollView.contentView.animator().setBoundsOrigin(target)
+            }, completionHandler: {
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            })
+        } else {
+            scrollView.contentView.scroll(to: target)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
         }
     }
 

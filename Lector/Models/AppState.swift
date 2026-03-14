@@ -133,6 +133,15 @@ final class AppState {
     var citationTestLogEnabled: Bool = false {
         didSet { UserDefaults.standard.set(citationTestLogEnabled, forKey: "citationTestLogEnabled") }
     }
+    var smoothScrollEnabled: Bool = false {
+        didSet { UserDefaults.standard.set(smoothScrollEnabled, forKey: "smoothScrollEnabled") }
+    }
+
+    // MARK: Pending scroll
+    /// Delta (in scroll-view points) to apply on the next `LectorPDFView.update` call.
+    /// @ObservationIgnored so it doesn't trigger an extra updateNSView on its own;
+    /// it is consumed when the accompanying `scrollYOffset` change fires the update.
+    @ObservationIgnored var pendingScrollDelta: CGFloat? = nil
 
     // MARK: Init
 
@@ -142,10 +151,12 @@ final class AppState {
             "rememberLastPosition": true,
             "citationDetectionEnabled": true,
             "citationTestLogEnabled": false,
+            "smoothScrollEnabled": false,
         ])
         rememberLastPosition = UserDefaults.standard.bool(forKey: "rememberLastPosition")
         citationDetectionEnabled = UserDefaults.standard.bool(forKey: "citationDetectionEnabled")
         citationTestLogEnabled = UserDefaults.standard.bool(forKey: "citationTestLogEnabled")
+        smoothScrollEnabled = UserDefaults.standard.bool(forKey: "smoothScrollEnabled")
         do {
             database = try Database()
         } catch {
@@ -444,9 +455,11 @@ final class AppState {
             let pageCount = document?.pageCount ?? 0
             currentPage = max(0, min(p, pageCount - 1))
         case .scrollDown(let d):
-            scrollYOffset += d
+            pendingScrollDelta = d
+            scrollYOffset += d  // estimated; triggers updateNSView; corrected by visiblePagesChanged
         case .scrollUp(let d):
-            scrollYOffset -= d
+            pendingScrollDelta = -d
+            scrollYOffset -= d  // estimated; triggers updateNSView; corrected by visiblePagesChanged
         case .nextPage:
             pushNavState()
             currentPage = min(currentPage + 1, (document?.pageCount ?? 1) - 1)
