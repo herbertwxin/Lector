@@ -205,6 +205,50 @@ enum CitationDetector {
         return beforeComma
     }
 
+    /// Extracts the first author's surname from a **first-name-first** bibliography entry,
+    /// e.g. "Daron Acemoglu and Simon Johnson. Power and Progress. PublicAffairs, 2023."
+    /// Complements `extractSurname` which handles inverted format ("Acemoglu, Daron ...").
+    /// Returns the last word of the first-author name segment, or nil if extraction fails.
+    static func extractSurnameFirstNameFirst(from line: String) -> String? {
+        // Find the end of the first author's name segment.
+        // Separators: " and " (co-author list), "," (co-author comma), ". " (title start), "(" (year/paren).
+        var endIdx = line.endIndex
+        if let r = line.range(of: " and ", options: .caseInsensitive), r.lowerBound < endIdx {
+            endIdx = r.lowerBound
+        }
+        if let r = line.firstIndex(of: ","), r < endIdx {
+            endIdx = r
+        }
+        if let r = line.range(of: ". "), r.lowerBound < endIdx {
+            endIdx = r.lowerBound
+        }
+        if let r = line.firstIndex(of: "("), r < endIdx {
+            endIdx = r
+        }
+
+        let firstAuthorStr = String(line[..<endIdx]).trimmingCharacters(in: .whitespaces)
+        guard !firstAuthorStr.isEmpty else { return nil }
+
+        let tokens = firstAuthorStr.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+        // Need at least "FirstName LastName"; cap at 5 to avoid matching body-text sentences.
+        guard tokens.count >= 2, tokens.count <= 5 else { return nil }
+
+        // Surname is the last token; validate it.
+        let surname = tokens.last!
+        guard let firstChar = surname.first, firstChar.isUppercase else { return nil }
+        guard !surname.unicodeScalars.contains(where: { CharacterSet.decimalDigits.contains($0) }) else { return nil }
+        // Reject single initials like "A." or short suffixes like "Jr."
+        if surname.count <= 3 && surname.hasSuffix(".") { return nil }
+        if notSurnames.contains(surname.lowercased()) { return nil }
+
+        // First token (first name) must also start uppercase and not be a stopword.
+        guard let firstToken = tokens.first,
+              let firstTokenFirst = firstToken.first, firstTokenFirst.isUppercase,
+              !notSurnames.contains(firstToken.lowercased()) else { return nil }
+
+        return surname
+    }
+
     /// Extracts a 4-digit year (19xx / 20xx) from accumulated bibliography entry text.
     /// Tries multiple patterns in order of specificity to handle AEA format, author-year
     /// format, working papers, and journal articles.
@@ -218,14 +262,14 @@ enum CitationDetector {
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
-        // 2. " YYYY." — space before year, period after (working papers, end-of-entry)
-        if let regex = try? NSRegularExpression(pattern: #"\s((19|20)\d{2})\."#),
+        // 2. " YYYY[a-z]?." — space before year, optional letter suffix (e.g. "1980a."), period after
+        if let regex = try? NSRegularExpression(pattern: #"\s((19|20)\d{2})[a-z]?\."#),
            let match = regex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
-        // 3. ". YYYY." — period before and after (AEA format mid-entry)
-        if let regex = try? NSRegularExpression(pattern: #"\.\s*((19|20)\d{2})\."#),
+        // 3. ". YYYY[a-z]?." — period before and after (AEA format mid-entry, with optional letter suffix)
+        if let regex = try? NSRegularExpression(pattern: #"\.\s*((19|20)\d{2})[a-z]?\."#),
            let match = regex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
@@ -236,8 +280,9 @@ enum CitationDetector {
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
-        // 5. Any 4-digit year — last resort
-        if let regex = try? NSRegularExpression(pattern: #"\b((?:19|20)\d{2})\b"#),
+        // 5. Any 4-digit year not immediately followed by another digit — last resort.
+        //    Using (?!\d) instead of \b so "1980a" still matches (word boundary fails there).
+        if let regex = try? NSRegularExpression(pattern: #"((?:19|20)\d{2})(?!\d)"#),
            let match = regex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
@@ -326,7 +371,9 @@ enum CitationDetector {
             for line in lines {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.isEmpty else { continue }
-                if isNewEntryStart(trimmed), extractSurname(from: trimmed) != nil { return pIdx }
+                if isNewEntryStart(trimmed),
+                   extractSurname(from: trimmed) != nil
+                       || extractSurnameFirstNameFirst(from: trimmed) != nil { return pIdx }
                 break  // Only check first non-empty line per page
             }
         }
@@ -579,8 +626,12 @@ enum CitationDetector {
                 lineForAuthor = String(trimmed[numPrefix.upperBound...]).trimmingCharacters(in: .whitespaces)
             }
 
-            // 2) New author-year entry: starts with uppercase (or known lower prefix), has a comma
-            if isNewEntryStart(lineForAuthor), let surname = extractSurname(from: lineForAuthor) {
+            // 2) New author-year entry: starts with uppercase (or known lower prefix).
+            //    Try inverted format first ("Acemoglu, Daron …"), then first-name-first
+            //    ("Daron Acemoglu and Simon Johnson. …") as a fallback.
+            if isNewEntryStart(lineForAuthor),
+               let surname = extractSurname(from: lineForAuthor)
+                             ?? extractSurnameFirstNameFirst(from: lineForAuthor) {
                 flushCurrentEntry()
                 let yOffset = Double(pageBounds.maxY - currentY)
                 currentEntry = (surname, yOffset, [trimmed])
@@ -955,9 +1006,10 @@ enum CitationDetector {
     private static func authorYearReferenceWithPeriod(in line: String) -> (String, String)? {
         let ns = line as NSString
         let fullRange = NSRange(location: 0, length: ns.length)
-        // Prefer ". YYYY. " then fall back to " YYYY. " (name without period before year, e.g. "Patterson 2015.").
+        // Prefer ". YYYY[a-z]?. " then fall back to " YYYY[a-z]?. " (name without period before year).
+        // The optional [a-z] suffix handles letter-disambiguated years like "1980a" (Ramey, AEA style).
         // Restrict years to 19xx / 20xx to avoid treating issue numbers like 7540 or 7676 as years.
-        for (pattern, requireLetterBefore) in [(#"\.\s*((?:19|20)\d{2})\s*\."#, false), (#"\s+((?:19|20)\d{2})\s*\."#, true)] {
+        for (pattern, requireLetterBefore) in [(#"\.\s*((?:19|20)\d{2})[a-z]?\s*\."#, false), (#"\s+((?:19|20)\d{2})[a-z]?\s*\."#, true)] {
             guard let regex = try? NSRegularExpression(pattern: pattern),
                   let match = regex.firstMatch(in: line, options: [], range: fullRange),
                   match.numberOfRanges >= 2,
