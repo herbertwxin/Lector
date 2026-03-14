@@ -31,6 +31,11 @@ struct PreferencesView: View {
                 }
             }
 
+            Section("Keyboard") {
+                Toggle("Smooth keyboard scrolling", isOn: $state.smoothScrollEnabled)
+                    .help("Animate j/k and arrow key scrolling instead of jumping instantly.")
+            }
+
             Section("Navigation") {
                 Toggle("Remember last view position", isOn: $state.rememberLastPosition)
             }
@@ -61,7 +66,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 360)
+        .frame(width: 450, height: 430)
         .padding()
     }
 }
