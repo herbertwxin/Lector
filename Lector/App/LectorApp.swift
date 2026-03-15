@@ -271,8 +271,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let startY    = notification.userInfo?["yOffset"]   as? Double
 
         let newState = AppState(readOnly: readOnly)
-        let rootView = WindowWrapper(state: newState)
 
+        // Load the document BEFORE building the view hierarchy.  WindowWrapper
+        // registers the window via WindowAccessor during the first SwiftUI layout
+        // pass, which fires synchronously inside makeKeyAndOrderFront.  If
+        // state.document is still nil at that point, AppWindowManager.register()
+        // treats the window as a stray blank scene and closes it immediately,
+        // leaving two welcome-screen windows behind.  Pre-loading guarantees
+        // state.document != nil when register() runs.
+        newState.openDocument(at: url)
+        if let page = startPage { newState.currentPage = page }
+        if let y    = startY    { newState.scrollYOffset = y }
+
+        let rootView = WindowWrapper(state: newState)
         let controller = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: controller)
         window.title = url.lastPathComponent
@@ -280,13 +291,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isRestorable = false
         window.center()
-        
-        // WindowWrapper handles AppWindowManager registration via WindowAccessor.
 
+        // WindowWrapper handles AppWindowManager registration via WindowAccessor.
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        newState.openDocument(at: url)
-        if let page = startPage { newState.currentPage = page }
-        if let y    = startY    { newState.scrollYOffset = y }
     }
 }
