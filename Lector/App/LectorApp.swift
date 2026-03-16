@@ -81,10 +81,16 @@ struct PreferencesWrapper: View {
 // ║  4. DOCK CLICK / REOPEN — no visible windows                            ║
 // ║     applicationShouldHandleReopen fires.  bringAnyWindowToFront()       ║
 // ║     deminiaturises an existing window (if any) and activates the app.   ║
-// ║     If there are NO windows at all, a blank window is opened explicitly  ║
-// ║     so the user gets a welcome screen.  If application(_:open:) also    ║
-// ║     fires (Finder file-open while app had no windows), openURL() finds   ║
-// ║     that blank window and loads the document into it.                    ║
+// ║     If there are NO windows, a blank window is scheduled with            ║
+// ║     DispatchQueue.main.async (deferred, not synchronous).               ║
+// ║     If application(_:open:) fires on the same run-loop cycle (Finder     ║
+// ║     file-open), it cancels the deferred blank window and openURL()       ║
+// ║     handles the PDF — no homepage flash.                                 ║
+// ║     If no file open follows (pure dock click), the deferred blank runs   ║
+// ║     → welcome screen shown.                                              ║
+// ║     NEVER post lectorOpenNewWindow synchronously in                      ║
+// ║     applicationShouldHandleReopen — that causes a homepage to appear     ║
+// ║     alongside the PDF (regression).                                      ║
 // ║                                                                          ║
 // ║  INVARIANTS that must never be broken:                                   ║
 // ║  • openDocument(at:) is always called BEFORE makeKeyAndOrderFront for   ║
@@ -312,32 +318,43 @@ struct LectorCommands: Commands {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
+    // Deferred blank-window work item posted by applicationShouldHandleReopen.
+    // Cancelled by application(_:open:) when a real URL arrives on the same
+    // run-loop cycle, preventing a spurious homepage from appearing alongside
+    // the PDF that Finder is opening.
+    private var deferredBlankWindow: DispatchWorkItem?
+
     // Keep the app alive when the window is closed (red button).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
 
-    // Clicking the Dock icon (or any activation while the app has no visible
-    // windows) ends up here.  This is also called before application(_:open:)
-    // when the user double-clicks a file in Finder while every window is
-    // closed or minimised.
+    // Called when the Dock icon is clicked (or whenever the app is activated
+    // while it has no visible windows).  macOS also calls this BEFORE
+    // application(_:open:) when the user double-clicks a file in Finder
+    // while every window is closed or minimised.
     //
     // Strategy:
-    //   • Minimised windows → deminiaturise + activate (bringAnyWindowToFront).
-    //   • No windows at all → open a blank window explicitly.
-    //       - Dock-click: the blank window shows the welcome screen.
-    //       - Finder file-open: application(_:open:) fires next and
-    //         openURL() finds this blank window and loads the PDF into it,
-    //         so the user never sees the welcome screen flash.
+    //   • Minimised windows  → deminiaturise + activate.
+    //   • No windows at all  → schedule a blank window with async dispatch so
+    //     that application(_:open:) — fired on the same run-loop cycle for
+    //     Finder file-opens — can cancel it before it executes.
+    //       - Dock-click only:   blank window appears → welcome screen. ✓
+    //       - Finder file-open:  application(_:open:) cancels the blank window
+    //                            and openURL() opens the PDF directly. ✓
     //
-    // DO NOT rely on returning true to make SwiftUI create a window —
-    // that behaviour is unreliable when isRestorable=false and varies
-    // across macOS versions.
+    // DO NOT post lectorOpenNewWindow synchronously here — that causes a
+    // visible homepage to appear alongside the PDF (regression).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
             if !AppWindowManager.shared.bringAnyWindowToFront() {
-                // No existing window to deminiaturise — open a blank one.
-                NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil)
+                // Defer so application(_:open:) can cancel this if a URL follows.
+                let item = DispatchWorkItem { [weak self] in
+                    self?.deferredBlankWindow = nil
+                    NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil)
+                }
+                deferredBlankWindow = item
+                DispatchQueue.main.async(execute: item)
             }
         }
         return true
@@ -364,6 +381,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Called by macOS at launch and while running (Finder double-click, "Open With…").
     func application(_ application: NSApplication, open urls: [URL]) {
+        // Cancel any deferred blank window — real URLs take priority.
+        deferredBlankWindow?.cancel()
+        deferredBlankWindow = nil
         urls.forEach { AppWindowManager.shared.openURL($0) }
     }
 
