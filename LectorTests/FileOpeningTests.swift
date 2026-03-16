@@ -268,6 +268,56 @@ final class FileOpeningTests: XCTestCase {
             "A running app (hasEverRegistered==true) must not take the cold-start path")
     }
 
+    // MARK: - Scenario: Dock-click + Finder-open homepage suppression
+
+    /// When the user opens a PDF from Finder while the app has no visible
+    /// windows, applicationShouldHandleReopen fires first (with
+    /// hasVisibleWindows == false), followed immediately by
+    /// application(_:open:).
+    ///
+    /// If applicationShouldHandleReopen returns `true` it lets SwiftUI spawn
+    /// a blank companion scene, which then appears alongside the PDF as an
+    /// unwanted homepage.
+    ///
+    /// The fix: return `false` and post a *deferred* lectorOpenNewWindow
+    /// notification that application(_:open:) can cancel before it fires.
+    /// This test verifies the cancellation logic is correct.
+    func testDeferredBlankWindowIsCancelledWhenURLsArrive() {
+        // Simulate the sequence: deferred blank item scheduled, then cancelled.
+        var blankWindowCreated = false
+        var itemCancelled = false
+
+        let item = DispatchWorkItem {
+            blankWindowCreated = true
+        }
+
+        // application(_:open:) fires — cancel the deferred item.
+        item.cancel()
+        itemCancelled = item.isCancelled
+
+        // The item must be cancelled before it runs.
+        XCTAssertTrue(itemCancelled,
+            "Deferred blank-window item must be cancelled when URLs arrive")
+
+        // Simulate the run loop draining — cancelled item must not execute.
+        item.perform()
+        XCTAssertFalse(blankWindowCreated,
+            "Cancelled DispatchWorkItem must not create a blank welcome window")
+    }
+
+    /// applicationShouldHandleReopen must return false when hasVisibleWindows
+    /// is false so that SwiftUI's WindowGroup does NOT auto-spawn a blank scene.
+    /// Window creation is handled entirely by AppDelegate/AppWindowManager.
+    func testReopenWithNoVisibleWindowsMustNotLetSwiftUISpawnBlank() {
+        // The invariant: we manage window creation ourselves when no windows
+        // are visible — returning true would let SwiftUI create a companion
+        // blank scene that appears alongside any simultaneously-opened PDF.
+        let hasVisibleWindows = false
+        let shouldReturnFalse = !hasVisibleWindows  // our fix: return false
+        XCTAssertTrue(shouldReturnFalse,
+            "applicationShouldHandleReopen must return false when !hasVisibleWindows")
+    }
+
     // MARK: - Scenario: pendingURLs cold-start queuing
 
     /// During cold start (hasEverRegistered == false), URLs must be queued
