@@ -1,11 +1,37 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Logging
+
+func lectorLog(_ message: String) {
+    let timestamp = ISO8601DateFormatter().string(from: Date())
+    let logLine = "[\(timestamp)] \(message)\n"
+    let homePath = "/Users/hxin/lector-debug.log"
+    let logURL = URL(fileURLWithPath: homePath)
+    
+    if let data = logLine.data(using: .utf8) {
+        if FileManager.default.fileExists(atPath: logURL.path) {
+            if let handle = try? FileHandle(forWritingTo: logURL) {
+                handle.seekToEndOfFile()
+                handle.write(data)
+                handle.closeFile()
+            }
+        } else {
+            try? data.write(to: logURL)
+        }
+    }
+    print(logLine)
+}
+
 // MARK: - App Entry Point
 
 @main
 struct LectorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    init() {
+        lectorLog("LectorApp.init()")
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -29,6 +55,7 @@ struct WindowWrapper: View {
     @State private var state: AppState
 
     init(state: AppState = AppState()) {
+        lectorLog("WindowWrapper.init(state: \(state.documentURL?.lastPathComponent ?? "nil"))")
         _state = State(wrappedValue: state)
     }
 
@@ -110,118 +137,121 @@ final class AppWindowManager {
     static let shared = AppWindowManager()
 
     private struct Entry {
-        weak var window: NSWindow?
-        weak var state: AppState?
+        let window: NSWindow
+        let state: AppState
     }
+    
     private var entries: [Entry] = []
-    // URLs waiting to be loaded into the next available blank window.
     private var pendingURLs: [URL] = []
-    // True once any window has registered — marks the end of the SwiftUI
-    // launch phase where WindowGroup creates the first scene.
     private var hasEverRegistered = false
     private init() {}
 
     // MARK: Registration
 
     func register(window: NSWindow, state: AppState) {
-        hasEverRegistered = true
-        entries.removeAll { $0.window == nil || $0.state == nil || $0.state === state }
+        lectorLog("AppWindowManager.register: title='\(window.title)' hasDoc=\(state.document != nil) hasEverRegistered=\(hasEverRegistered)")
+        
+        // Remove stale entries and avoid duplicates
+        entries.removeAll { $0.window == window || $0.state === state }
         entries.append(Entry(window: window, state: state))
+        hasEverRegistered = true
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
 
+        // 1. If this is a document window, sweep any blank companions.
         if state.document != nil {
-            // Document window (e.g. opened via split/portal with a pre-loaded URL).
-            // Sweep out any stray blank scenes macOS created alongside it.
+            lectorLog("AppWindowManager.register: doc window, sweeping blanks")
             sweepBlankWindows(except: state)
-        } else {
-            // Blank (home-screen) window.
-            if let url = pendingURLs.first {
-                // Cold-start path: a URL was queued before any window existed.
-                // Load it into this blank window.
-                pendingURLs.removeFirst()
-                state.openDocument(at: url)
-                window.deminiaturize(nil)
-                window.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-                // Sweep any other blank companion windows macOS may have created
-                // during launch — they are now redundant.
-                sweepBlankWindows(except: state)
-                // Dispatch any remaining pending URLs on the next run-loop turn
-                // to avoid deep re-entrant call stacks.
+            return
+        }
+
+        // 2. If it's a blank window, consume pending URLs from Finder.
+        if !pendingURLs.isEmpty {
+            let url = pendingURLs.removeFirst()
+            lectorLog("AppWindowManager.register: consuming '\(url.lastPathComponent)'")
+            state.openDocument(at: url)
+            window.title = url.lastPathComponent
+            
+            // If more URLs were queued (e.g. user selected 5 files), 
+            // open them in new windows now that we are registered.
+            if !pendingURLs.isEmpty {
                 let remaining = pendingURLs
                 pendingURLs = []
-                if !remaining.isEmpty {
-                    DispatchQueue.main.async {
-                        remaining.forEach { AppWindowManager.shared.openURL($0) }
-                    }
+                DispatchQueue.main.async {
+                    remaining.forEach { self.openURL($0) }
                 }
-            } else {
-                // No pending URL. Close this window if document windows already
-                // exist; it is a stray companion scene spawned by macOS.
-                let hasDocumentWindow = entries.contains {
-                    $0.state?.document != nil && $0.window != nil && $0.state !== state
-                }
-                if hasDocumentWindow {
-                    window.close()
-                    entries.removeAll { $0.window == nil || $0.state === state }
-                }
-                // Otherwise keep it as the welcome screen.
+            }
+            sweepBlankWindows(except: state)
+        } else {
+            // 3. No pending URL. If any other window already exists (blank or doc),
+            // this new blank window is a redundant scene spawned by macOS.
+            let isRedundant = entries.contains { $0.window !== window }
+            if isRedundant {
+                lectorLog("AppWindowManager.register: closing redundant homepage")
+                window.close()
             }
         }
     }
 
-    private func sweepBlankWindows(except current: AppState) {
-        let blanks = entries.filter {
-            $0.state?.document == nil && $0.window != nil && $0.state !== current
+    @objc private func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow {
+            lectorLog("AppWindowManager: window '\(window.title)' closing")
+            entries.removeAll { $0.window == window }
         }
-        blanks.forEach { $0.window?.close() }
-        entries.removeAll { $0.state?.document == nil && $0.state !== current }
     }
 
     func unregister(state: AppState) {
-        entries.removeAll { $0.state === state || $0.window == nil || $0.state == nil }
+        entries.removeAll { $0.state === state }
+    }
+
+    private func sweepBlankWindows(except current: AppState) {
+        let blanks = entries.filter { $0.state.document == nil && $0.state !== current }
+        lectorLog("AppWindowManager.sweepBlankWindows: closing \(blanks.count) windows")
+        blanks.forEach { $0.window.close() }
     }
 
     // MARK: URL Opening
 
     func openURL(_ url: URL) {
-        entries.removeAll { $0.window == nil || $0.state == nil }
-
-        // Bring to front if this URL is already open.
-        if let entry = entries.first(where: { $0.state?.documentURL == url }),
-           let win = entry.window {
-            win.deminiaturize(nil)
-            win.makeKeyAndOrderFront(nil)
+        lectorLog("AppWindowManager.openURL: '\(url.lastPathComponent)' hasEverRegistered=\(hasEverRegistered) count=\(entries.count)")
+        
+        // Focus if already open
+        if let entry = entries.first(where: { $0.state.documentURL == url }) {
+            lectorLog("AppWindowManager.openURL: focus existing")
+            entry.window.deminiaturize(nil)
+            entry.window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
-        guard hasEverRegistered else {
-            // Launch phase: the SwiftUI WindowGroup window is being created
-            // and will drain pendingURLs when it first calls register().
-            pendingURLs.append(url)
+        // During launch, queue the URL. The first window to register will consume it.
+        if !hasEverRegistered {
+            lectorLog("AppWindowManager.openURL: queuing for launch")
+            if !pendingURLs.contains(url) {
+                pendingURLs.append(url)
+            }
             return
         }
 
-        // If a blank (welcome-screen) window is already registered, load the
-        // URL directly into it — no new window needed.
-        if let entry = entries.first(where: { $0.state?.document == nil }),
-           let blankState = entry.state, let win = entry.window {
-            blankState.openDocument(at: url)
-            win.deminiaturize(nil)
-            win.makeKeyAndOrderFront(nil)
+        // If a blank window is available, reuse it.
+        if let entry = entries.first(where: { $0.state.document == nil }) {
+            lectorLog("AppWindowManager.openURL: reuse blank window")
+            entry.state.openDocument(at: url)
+            entry.window.title = url.lastPathComponent
+            entry.window.deminiaturize(nil)
+            entry.window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
-            // Sweep any other blank windows macOS may have spawned alongside
-            // this one.  Without this call a second companion WindowGroup scene
-            // that registered before openURL() ran would linger as a homepage.
-            sweepBlankWindows(except: blankState)
+            sweepBlankWindows(except: entry.state)
             return
         }
 
-        // No blank window available.  Create a new window with the URL embedded
-        // in the notification so handleOpenNewWindow pre-loads the document
-        // BEFORE the window is displayed.  register() will then see
-        // state.document != nil, treat the window as a real document window,
-        // and sweep any stray companion blank scenes macOS may have spawned.
+        // No blank window, open new.
+        lectorLog("AppWindowManager.openURL: post lectorOpenNewWindow")
         NotificationCenter.default.post(
             name: .lectorOpenNewWindow,
             object: nil,
@@ -233,11 +263,10 @@ final class AppWindowManager {
     /// Returns true when a window was found and brought to front.
     @discardableResult
     func bringAnyWindowToFront() -> Bool {
-        entries.removeAll { $0.window == nil || $0.state == nil }
-        if let win = entries.first?.window {
-            win.deminiaturize(nil)
-            win.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)   // ← was missing; app stayed in background
+        if let entry = entries.first {
+            entry.window.deminiaturize(nil)
+            entry.window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
             return true
         }
         return false
@@ -249,20 +278,25 @@ final class AppWindowManager {
 struct WindowAccessor: NSViewRepresentable {
     let callback: (NSWindow) -> Void
 
-    func makeNSView(context: Context) -> NSView { NSView() }
-
-    /// updateNSView fires after layout, guaranteeing nsView.window is non-nil.
-    /// The coordinator ensures the callback fires exactly once per window lifetime.
-    func updateNSView(_ nsView: NSView, context: Context) {
-        guard let window = nsView.window, !context.coordinator.didFire else { return }
-        context.coordinator.didFire = true
-        callback(window)
+    func makeNSView(context: Context) -> NSView {
+        let view = WindowCallbackView()
+        view.callback = callback
+        return view
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 
-    final class Coordinator {
+    class WindowCallbackView: NSView {
+        var callback: ((NSWindow) -> Void)?
         var didFire = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window = window, !didFire {
+                didFire = true
+                callback?(window)
+            }
+        }
     }
 }
 
@@ -392,6 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Called by macOS at launch and while running (Finder double-click, "Open With…").
     func application(_ application: NSApplication, open urls: [URL]) {
+        lectorLog("AppDelegate.application(_:open:): urls=\(urls.count)")
         // Cancel any deferred blank window — real URLs take priority.
         deferredBlankWindow?.cancel()
         deferredBlankWindow = nil
