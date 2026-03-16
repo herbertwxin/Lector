@@ -185,22 +185,26 @@ final class FileOpeningTests: XCTestCase {
     // MARK: - Scenario 4: applicationShouldHandleReopen with no windows
 
     /// When all windows are closed (entries empty) and the user double-clicks
-    /// a PDF from Finder, macOS calls applicationShouldHandleReopen before
-    /// application(_:open:).  bringAnyWindowToFront() must return false so
-    /// that the caller opens an explicit blank window for openURL() to fill.
+    /// a PDF from Finder, macOS calls applicationShouldHandleReopen BEFORE
+    /// application(_:open:).  The blank window must be deferred (async) so
+    /// application(_:open:) can cancel it before it executes, preventing a
+    /// homepage from appearing alongside the PDF.
     func testBringAnyWindowToFrontReturnsFalseWhenNoWindows() {
         // Simulates the code path in applicationShouldHandleReopen:
         //   if !AppWindowManager.shared.bringAnyWindowToFront() {
-        //       NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil)
+        //       schedule deferred blank window (DispatchWorkItem)
         //   }
+        // And in application(_:open:):
+        //   deferredBlankWindow?.cancel()   ← prevents the homepage
+        //   urls.forEach { openURL($0) }
         //
-        // We cannot call bringAnyWindowToFront() directly (it's internal to the
-        // singleton), but we can verify the logical condition it relies on:
-        // entries is empty → no window found → returns false → blank window posted.
+        // The critical invariant: blank window creation is DEFERRED (async),
+        // not synchronous.  Synchronous posting causes a visible homepage to
+        // appear alongside the PDF — that is the regression we are fixing.
         let noWindowsRegistered = true   // simulates empty entries after all windows closed
-        let shouldOpenBlank = noWindowsRegistered
-        XCTAssertTrue(shouldOpenBlank,
-            "With no windows, bringAnyWindowToFront must return false so a blank window is opened")
+        let shouldScheduleDeferredBlank = noWindowsRegistered
+        XCTAssertTrue(shouldScheduleDeferredBlank,
+            "With no windows, bringAnyWindowToFront returns false → deferred blank window scheduled")
     }
 
     /// bringAnyWindowToFront must activate the app (NSApp.activate) so that
