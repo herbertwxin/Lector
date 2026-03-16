@@ -57,16 +57,17 @@ final class FileOpeningTests: XCTestCase {
             "state.document == nil must be true so the recent-doc button routes to openDocument(at:)")
     }
 
-    /// When a document IS loaded, clicking a recent doc opens a new window.
-    func testRecentDocButtonOpensNewWindowWhenDocumentIsLoaded() {
-        // We can't open a real PDF, but we can verify the conditional
-        // logic via the document property being non-nil (simulate by checking
-        // the else branch condition).
+    /// When no document is loaded, clicking a recent doc must NOT open a new
+    /// window; it should load in the current window instead.
+    func testRecentDocButtonDoesNotOpenNewWindowWhenNoDocumentLoaded() {
+        // We can't open a real PDF here, but we can verify the conditional
+        // logic for the welcome-screen state: a fresh AppState has no document
+        // loaded, so the "new window" (openURL) branch must NOT be taken.
         let state = AppState()
-        // state.document is nil → the else branch (new window) won't be taken
+        // state.document is nil → the else branch (new window) won't be taken.
         // A real document window has state.document != nil, which routes to openURL.
         XCTAssertTrue(state.document == nil,
-            "Without a loaded document the 'new window' branch is not taken")
+            "Without a loaded document the 'new window' branch must not be taken")
     }
 
     // MARK: - Scenario 6: openDocumentDialog routing
