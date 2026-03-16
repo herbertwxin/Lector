@@ -167,6 +167,10 @@ final class AppWindowManager {
             win.deminiaturize(nil)
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            // Sweep any other blank windows macOS may have spawned alongside
+            // this one.  Without this call a second companion WindowGroup scene
+            // that registered before openURL() ran would linger as a homepage.
+            sweepBlankWindows(except: blankState)
             return
         }
 
