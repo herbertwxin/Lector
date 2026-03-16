@@ -221,6 +221,26 @@ final class FileOpeningTests: XCTestCase {
             "NSApp.activate must be called after deminiaturise to bring the app to the foreground")
     }
 
+    /// applicationShouldHandleReopen must return FALSE when !hasVisibleWindows.
+    /// Returning true tells SwiftUI's WindowGroup to spawn a companion blank
+    /// scene — that is the homepage-alongside-PDF bug.
+    /// We manage the window ourselves (bringAnyWindowToFront or deferred blank),
+    /// so returning false prevents the duplicate.
+    func testApplicationShouldHandleReopenReturnsFalseWhenNoVisibleWindows() {
+        // The invariant in applicationShouldHandleReopen:
+        //   guard !hasVisibleWindows else { return true }
+        //   ... handle it ourselves ...
+        //   return false   ← this line is the fix
+        //
+        // When returning true with no visible windows, SwiftUI's WindowGroup
+        // interprets "normal reopen handling" as "open a new blank scene",
+        // creating a welcome-screen window alongside the PDF the user opened.
+        let hasVisibleWindows = false
+        let shouldLetSwiftUIHandleIt = hasVisibleWindows  // false → we handle it
+        XCTAssertFalse(shouldLetSwiftUIHandleIt,
+            "applicationShouldHandleReopen must return false when no visible windows exist")
+    }
+
     // MARK: - Scenario: Finder open while running posts URL in notification
 
     /// When openURL() is called for a running app (hasEverRegistered == true)

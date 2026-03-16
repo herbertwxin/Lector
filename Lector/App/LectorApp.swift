@@ -91,6 +91,9 @@ struct PreferencesWrapper: View {
 // ║     NEVER post lectorOpenNewWindow synchronously in                      ║
 // ║     applicationShouldHandleReopen — that causes a homepage to appear     ║
 // ║     alongside the PDF (regression).                                      ║
+// ║     NEVER return true when !hasVisibleWindows — that tells SwiftUI's     ║
+// ║     WindowGroup to spawn a companion blank scene, which is the homepage  ║
+// ║     alongside PDF bug.  Return false instead (we manage the window).     ║
 // ║                                                                          ║
 // ║  INVARIANTS that must never be broken:                                   ║
 // ║  • openDocument(at:) is always called BEFORE makeKeyAndOrderFront for   ║
@@ -99,6 +102,8 @@ struct PreferencesWrapper: View {
 // ║  • bringAnyWindowToFront() always calls NSApp.activate so the app       ║
 // ║    actually comes to the foreground.                                     ║
 // ║  • pendingURLs is only used during cold start (hasEverRegistered==false).║
+// ║  • applicationShouldHandleReopen returns false when !hasVisibleWindows  ║
+// ║    (we handle it) and true only when hasVisibleWindows (harmless default).║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 
 final class AppWindowManager {
@@ -335,29 +340,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // while every window is closed or minimised.
     //
     // Strategy:
-    //   • Minimised windows  → deminiaturise + activate.
+    //   • Minimised windows  → deminiaturise + activate.  Return false (handled).
     //   • No windows at all  → schedule a blank window with async dispatch so
     //     that application(_:open:) — fired on the same run-loop cycle for
     //     Finder file-opens — can cancel it before it executes.
     //       - Dock-click only:   blank window appears → welcome screen. ✓
     //       - Finder file-open:  application(_:open:) cancels the blank window
     //                            and openURL() opens the PDF directly. ✓
+    //     Return false (handled).
     //
-    // DO NOT post lectorOpenNewWindow synchronously here — that causes a
-    // visible homepage to appear alongside the PDF (regression).
+    // RETURN false when !hasVisibleWindows — we manage the window ourselves.
+    // RETURN true  when  hasVisibleWindows — visible windows exist; let macOS
+    //   handle focus normally (no window will be spawned).
+    //
+    // Returning true when !hasVisibleWindows tells SwiftUI to do its default
+    // WindowGroup reopen handling, which spawns a blank companion scene —
+    // that is exactly the homepage-alongside-PDF regression.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if !hasVisibleWindows {
-            if !AppWindowManager.shared.bringAnyWindowToFront() {
-                // Defer so application(_:open:) can cancel this if a URL follows.
-                let item = DispatchWorkItem { [weak self] in
-                    self?.deferredBlankWindow = nil
-                    NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil)
-                }
-                deferredBlankWindow = item
-                DispatchQueue.main.async(execute: item)
+        guard !hasVisibleWindows else { return true }
+
+        if !AppWindowManager.shared.bringAnyWindowToFront() {
+            // Defer so application(_:open:) can cancel this if a URL follows.
+            let item = DispatchWorkItem { [weak self] in
+                self?.deferredBlankWindow = nil
+                NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil)
             }
+            deferredBlankWindow = item
+            DispatchQueue.main.async(execute: item)
         }
-        return true
+        return false  // we handled it; prevent SwiftUI spawning a companion blank scene
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
