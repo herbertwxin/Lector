@@ -85,44 +85,47 @@ final class AppWindowManager {
         entries.removeAll { $0.window == nil || $0.state == nil || $0.state === state }
         entries.append(Entry(window: window, state: state))
 
+        // Document window (pre-loaded via split/portal or Finder open-with-manual-window)
         if state.document != nil {
-            // Document window (e.g. opened via split/portal with a pre-loaded URL).
-            // Sweep out any stray blank scenes macOS created alongside it.
             sweepBlankWindows(except: state)
-        } else {
-            // Blank (home-screen) window.
-            if let url = pendingURLs.first {
-                // Cold-start path: a URL was queued before any window existed.
-                // Load it into this blank window.
-                pendingURLs.removeFirst()
-                state.openDocument(at: url)
-                window.deminiaturize(nil)
-                window.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-                // Sweep any other blank companion windows macOS may have created
-                // during launch — they are now redundant.
-                sweepBlankWindows(except: state)
-                // Dispatch any remaining pending URLs on the next run-loop turn
-                // to avoid deep re-entrant call stacks.
+            return
+        }
+
+        // Blank window.
+        // If we have a pending cold-start URL, drain the first one into this window.
+        if let url = pendingURLs.first {
+            pendingURLs.removeFirst()
+            state.openDocument(at: url)
+            window.title = url.lastPathComponent
+            window.deminiaturize(nil)
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            
+            // Sweep any other blank windows that macOS may have spawned during launch.
+            sweepBlankWindows(except: state)
+            
+            // If there are more URLs (e.g. 3 files selected in Finder), dispatch
+            // them to openURL(). Since hasEverRegistered is now true, they will
+            // be opened in new windows.
+            if !pendingURLs.isEmpty {
                 let remaining = pendingURLs
                 pendingURLs = []
-                if !remaining.isEmpty {
-                    DispatchQueue.main.async {
-                        remaining.forEach { AppWindowManager.shared.openURL($0) }
-                    }
+                DispatchQueue.main.async {
+                    remaining.forEach { AppWindowManager.shared.openURL($0) }
                 }
-            } else {
-                // No pending URL. Close this window if document windows already
-                // exist; it is a stray companion scene spawned by macOS.
-                let hasDocumentWindow = entries.contains {
-                    $0.state?.document != nil && $0.window != nil && $0.state !== state
-                }
-                if hasDocumentWindow {
-                    window.close()
-                    entries.removeAll { $0.window == nil || $0.state === state }
-                }
-                // Otherwise keep it as the welcome screen.
             }
+        } else {
+            // No pending URL. Close this window if a document window already
+            // exists; it is a stray companion scene spawned by macOS during
+            // an "Open With" launch.
+            let hasDocumentWindow = entries.contains {
+                $0.state?.document != nil && $0.window != nil && $0.state !== state
+            }
+            if hasDocumentWindow {
+                window.close()
+                entries.removeAll { $0.window == nil || $0.state === state }
+            }
+            // Otherwise keep it as the welcome screen.
         }
     }
 
@@ -155,7 +158,9 @@ final class AppWindowManager {
         guard hasEverRegistered else {
             // Launch phase: the SwiftUI WindowGroup window is being created
             // and will drain pendingURLs when it first calls register().
-            pendingURLs.append(url)
+            if !pendingURLs.contains(url) {
+                pendingURLs.append(url)
+            }
             return
         }
 
@@ -164,21 +169,17 @@ final class AppWindowManager {
         if let entry = entries.first(where: { $0.state?.document == nil }),
            let blankState = entry.state, let win = entry.window {
             blankState.openDocument(at: url)
+            win.title = url.lastPathComponent
             win.deminiaturize(nil)
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             // Sweep any other blank windows macOS may have spawned alongside
-            // this one.  Without this call a second companion WindowGroup scene
-            // that registered before openURL() ran would linger as a homepage.
+            // this one.
             sweepBlankWindows(except: blankState)
             return
         }
 
-        // No blank window available.  Create a new window with the URL embedded
-        // in the notification so handleOpenNewWindow pre-loads the document
-        // BEFORE the window is displayed.  register() will then see
-        // state.document != nil, treat the window as a real document window,
-        // and sweep any stray companion blank scenes macOS may have spawned.
+        // No blank window available. Create a new window.
         NotificationCenter.default.post(
             name: .lectorOpenNewWindow,
             object: nil,
