@@ -55,13 +55,13 @@ struct PreferencesWrapper: View {
 
 // MARK: - Window Manager
 //
-// Design: pendingURLs is the *universal* handoff between openURL() and the
-// window system — at launch, during reopen, and for every subsequent Finder
-// open.  openURL() queues a URL and ensures a blank window exists (creating
-// one if needed).  The blank window drains pendingURLs the moment it
-// registers, regardless of whether that registration happens synchronously
-// inside makeKeyAndOrderFront or asynchronously on the next display frame.
-// This means we never need to race against updateNSView timing.
+// Design: pendingURLs handles the cold-start handoff only (when the SwiftUI
+// WindowGroup window is being created before application(_:open:) fires).
+// For every subsequent Finder open the URL is passed directly in the
+// lectorOpenNewWindow notification so handleOpenNewWindow pre-loads the
+// document BEFORE the window is shown.  This guarantees register() always
+// sees state.document != nil for programmatic document windows and never
+// mistakes them for stray blank scenes that must be closed.
 
 final class AppWindowManager {
     static let shared = AppWindowManager()
@@ -92,12 +92,16 @@ final class AppWindowManager {
         } else {
             // Blank (home-screen) window.
             if let url = pendingURLs.first {
-                // A URL is waiting — load it and bring this window to front.
+                // Cold-start path: a URL was queued before any window existed.
+                // Load it into this blank window.
                 pendingURLs.removeFirst()
                 state.openDocument(at: url)
                 window.deminiaturize(nil)
                 window.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
+                // Sweep any other blank companion windows macOS may have created
+                // during launch — they are now redundant.
+                sweepBlankWindows(except: state)
                 // Dispatch any remaining pending URLs on the next run-loop turn
                 // to avoid deep re-entrant call stacks.
                 let remaining = pendingURLs
@@ -148,41 +152,33 @@ final class AppWindowManager {
             return
         }
 
-        // Queue the URL.  The blank window that drains it may already be
-        // registered below, or will arrive shortly via register().
-        pendingURLs.append(url)
-
         guard hasEverRegistered else {
             // Launch phase: the SwiftUI WindowGroup window is being created
             // and will drain pendingURLs when it first calls register().
+            pendingURLs.append(url)
             return
         }
 
-        // If a blank window is already registered, drain into it immediately.
+        // If a blank (welcome-screen) window is already registered, load the
+        // URL directly into it — no new window needed.
         if let entry = entries.first(where: { $0.state?.document == nil }),
-           let blankState = entry.state, let win = entry.window,
-           let first = pendingURLs.first {
-            pendingURLs.removeFirst()
-            blankState.openDocument(at: first)
+           let blankState = entry.state, let win = entry.window {
+            blankState.openDocument(at: url)
             win.deminiaturize(nil)
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
-            let remaining = pendingURLs
-            pendingURLs = []
-            if !remaining.isEmpty {
-                DispatchQueue.main.async {
-                    remaining.forEach { AppWindowManager.shared.openURL($0) }
-                }
-            }
             return
         }
 
-        // No blank window is available yet.  Create a new (initially blank)
-        // window; when it registers via WindowAccessor it will drain pendingURLs.
+        // No blank window available.  Create a new window with the URL embedded
+        // in the notification so handleOpenNewWindow pre-loads the document
+        // BEFORE the window is displayed.  register() will then see
+        // state.document != nil, treat the window as a real document window,
+        // and sweep any stray companion blank scenes macOS may have spawned.
         NotificationCenter.default.post(
             name: .lectorOpenNewWindow,
             object: nil,
-            userInfo: nil   // nil = blank window; register() will load pendingURLs
+            userInfo: ["url": url]
         )
     }
 
@@ -322,14 +318,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let newState = AppState(readOnly: readOnly)
 
         if let url {
-            // Internal navigation (split, portal, "open in new window"):
-            // pre-load state so register() sees a non-nil document and never
-            // treats this window as a stray blank scene.
+            // Load the document BEFORE building the view hierarchy.
+            // WindowWrapper registers this window via WindowAccessor; if
+            // state.document were nil at that point register() would treat this
+            // window as a stray blank scene and close it.  Pre-loading ensures
+            // register() sees a real document window and sweeps any companion
+            // blank scenes macOS may have spawned alongside this one.
             newState.openDocument(at: url)
             if let page = startPage { newState.currentPage  = page }
             if let y    = startY    { newState.scrollYOffset = y   }
         }
-        // nil url → intentionally blank window; register() will drain pendingURLs.
+        // url == nil only for the cold-start blank welcome window; register()
+        // will load pendingURLs into it when the first URL arrives.
 
         let rootView   = WindowWrapper(state: newState)
         let controller = NSHostingController(rootView: rootView)
