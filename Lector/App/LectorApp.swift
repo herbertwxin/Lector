@@ -186,12 +186,17 @@ final class AppWindowManager {
         )
     }
 
-    func bringAnyWindowToFront() {
+    /// Brings the first registered window to front.
+    /// Returns `true` if a window was found and brought forward, `false` if
+    /// no registered windows exist.
+    @discardableResult
+    func bringAnyWindowToFront() -> Bool {
         entries.removeAll { $0.window == nil || $0.state == nil }
-        if let win = entries.first?.window {
-            win.deminiaturize(nil)
-            win.makeKeyAndOrderFront(nil)
-        }
+        guard let win = entries.first?.window else { return false }
+        win.deminiaturize(nil)
+        win.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        return true
     }
 }
 
@@ -274,17 +279,38 @@ struct LectorCommands: Commands {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
+    /// Work item that creates a blank welcome window when the Dock icon is
+    /// clicked and no windows are open.  Cancelled if application(_:open:)
+    /// fires first (i.e. the user opened a PDF at the same time).
+    private var pendingBlankWindowItem: DispatchWorkItem?
+
     // Keep the app alive when the window is closed (red button).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
 
-    // Clicking the Dock icon re-shows a window when none are visible.
+    // Dock icon click or app reactivation.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if !hasVisibleWindows {
-            AppWindowManager.shared.bringAnyWindowToFront()
+        if hasVisibleWindows { return true }
+
+        // Returning `true` here would let SwiftUI's WindowGroup spawn a blank
+        // companion scene.  When a PDF is also being opened at the same time
+        // (application(_:open:) fires immediately after this), that companion
+        // scene appears alongside the PDF as a spurious homepage.
+        //
+        // We handle window creation ourselves:
+        //   • If a minimised/hidden window exists, bring it to front.
+        //   • Otherwise schedule a deferred blank welcome window so that
+        //     application(_:open:) can cancel it before it appears.
+        if AppWindowManager.shared.bringAnyWindowToFront() { return false }
+
+        let item = DispatchWorkItem { [weak self] in
+            self?.pendingBlankWindowItem = nil
+            NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil)
         }
-        return true
+        pendingBlankWindowItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: item)
+        return false
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -308,6 +334,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Called by macOS at launch and while running (Finder double-click, "Open With…").
     func application(_ application: NSApplication, open urls: [URL]) {
+        // Cancel any deferred blank welcome window — we're opening PDFs instead.
+        pendingBlankWindowItem?.cancel()
+        pendingBlankWindowItem = nil
         urls.forEach { AppWindowManager.shared.openURL($0) }
     }
 
