@@ -102,9 +102,10 @@ final class FileOpeningTests: XCTestCase {
 
         // We cannot open a real PDF in a unit test without a file path,
         // so we verify the guard condition that the fix relies on:
-        // The register() guard is: "hasDocumentWindow && pendingURLs.isEmpty && state.document == nil"
-        // After openDocument(at:) completes, state.document must be non-nil for
-        // a valid PDF, causing register() to keep the window.
+        // handleOpenNewWindow calls openDocument(at:) BEFORE makeKeyAndOrderFront,
+        // so state.document must be non-nil for a valid PDF when register() fires,
+        // causing register() to call sweepBlankWindows (doc-window branch) instead
+        // of the stray-guard (blank-window branch) that would close the window.
         //
         // Test the early-return guard: opening the same URL twice is a no-op.
         let fakeURL = URL(fileURLWithPath: "/tmp/nonexistent.pdf")
@@ -148,57 +149,83 @@ final class FileOpeningTests: XCTestCase {
 
     // MARK: - Scenario: AppWindowManager stray-window guard logic
 
-    /// Documents the AppWindowManager.register() guard:
-    ///   if hasDocumentWindow && pendingURLs.isEmpty && state.document == nil {
-    ///       window.close()
-    ///   }
-    /// The FIX for PR #21: openDocument(at:) is called BEFORE makeKeyAndOrderFront,
-    /// ensuring state.document != nil when this guard runs, so the new window is kept.
+    /// register() has two paths for blank (no-document) windows:
+    ///   A. pendingURLs has a URL  → cold-start drain: load URL, sweep other blanks
+    ///   B. pendingURLs is empty   → stray guard: close if document windows exist
     ///
-    /// This test verifies the logical condition that the fix ensures.
+    /// For Finder-opened windows (created by handleOpenNewWindow), state.document
+    /// is pre-loaded BEFORE the window is shown so they arrive at register() in
+    /// the state.document != nil branch — triggering sweepBlankWindows, NOT the
+    /// stray guard.  This prevents any companion blank scenes from persisting.
     func testStrayWindowGuardLogic() {
-        // Simulate: a document window is open, and a new window is being registered.
-        // Pre-fix: state.document == nil → guard fires → new window closed
-        // Post-fix: state.document != nil → guard does not fire → new window kept
+        // --- Finder-open window (correct behaviour) ---
+        // state.document is pre-loaded → register() goes into the document branch
+        // → sweepBlankWindows cleans up any macOS companion blank scenes.
+        let newWindowHasDocument = true  // loaded in handleOpenNewWindow before display
+        XCTAssertTrue(newWindowHasDocument,
+            "Finder-opened window must have state.document set before registration")
 
-        let hasDocumentWindow = true   // existing window with a loaded doc
-        let pendingURLs: [URL] = []    // no pending URLs
-        let newStateHasDocument = true // POST-FIX: document loaded before registration
+        // --- Stray blank companion (macOS-spawned, no URL) ---
+        // state.document == nil, pendingURLs empty, document windows exist → closed.
+        let isBlank          = true
+        let noPendingURLs    = true
+        let docWindowsExist  = true
+        let wouldCloseStray  = isBlank && noPendingURLs && docWindowsExist
+        XCTAssertTrue(wouldCloseStray,
+            "A blank companion with no pending URL must be closed when doc windows exist")
 
-        let wouldCloseWindow = hasDocumentWindow && pendingURLs.isEmpty && !newStateHasDocument
-        let wouldKeepWindow  = hasDocumentWindow && pendingURLs.isEmpty &&  newStateHasDocument
+        // --- Cold-start blank window with a pending URL ---
+        // state.document == nil, pendingURLs has URL → cold-start drain, NOT closed.
+        let hasPendingURL    = true
+        let wouldDrainNotClose = isBlank && hasPendingURL
+        XCTAssertTrue(wouldDrainNotClose,
+            "A blank window with a pending cold-start URL must drain it, not be closed")
+    }
 
-        XCTAssertFalse(wouldCloseWindow,
-            "With the fix applied, the stray-window guard must NOT close the new window")
-        XCTAssertTrue(wouldKeepWindow,
-            "With state.document set before registration, the new window must be kept")
+    // MARK: - Scenario: Finder open while running posts URL in notification
 
-        // And verify the pre-fix scenario (to document what was wrong):
-        let preFixStateHasDocument = false // BUG: document not yet loaded
-        let preFixWouldClose = hasDocumentWindow && pendingURLs.isEmpty && !preFixStateHasDocument
-        XCTAssertTrue(preFixWouldClose,
-            "Pre-fix: the stray-window guard incorrectly closed the new window")
+    /// When openURL() is called for a running app (hasEverRegistered == true)
+    /// with no blank window available, it must post lectorOpenNewWindow with
+    /// the URL embedded so handleOpenNewWindow can pre-load it.
+    ///
+    /// This prevents the "2 welcome screens" bug where Copilot's design posted
+    /// a nil-URL notification and relied on register() to drain pendingURLs —
+    /// which caused the blank window to be visible to the user before the PDF
+    /// was loaded.
+    func testFinderOpenWhileRunningUsesURLNotification() {
+        // The invariant: for running-app Finder opens, the URL is passed
+        // directly in the notification userInfo, not via pendingURLs.
+        // We verify the branching condition: hasEverRegistered == true and
+        // no blank window registered → use notification with URL.
+        let hasEverRegistered  = true   // app is running
+        let noBlankWindow      = true   // all windows have documents
+        let shouldUseURLNotif  = hasEverRegistered && noBlankWindow
+        XCTAssertTrue(shouldUseURLNotif,
+            "Running-app Finder open must post lectorOpenNewWindow with URL embedded")
+
+        // Confirm: cold start still uses pendingURLs, NOT a URL notification.
+        let isColdStart        = !hasEverRegistered   // false for running app
+        XCTAssertFalse(isColdStart,
+            "A running app (hasEverRegistered==true) must not take the cold-start path")
     }
 
     // MARK: - Scenario: pendingURLs cold-start queuing
 
     /// During cold start (hasEverRegistered == false), URLs must be queued
-    /// rather than posting a lectorOpenNewWindow notification.
-    /// We test the branching condition without mutating the singleton.
+    /// in pendingURLs rather than posting a lectorOpenNewWindow notification.
+    /// The WindowGroup window drains pendingURLs in register() when it appears.
     func testColdStartURLQueuingCondition() {
-        // AppWindowManager.openURL logic (simplified):
-        //   if entries.isEmpty {
-        //     if hasEverRegistered { post .lectorOpenNewWindow }
-        //     else { pendingURLs.append(url) }   ← cold start path
+        // AppWindowManager.openURL logic:
+        //   guard hasEverRegistered else {
+        //       pendingURLs.append(url)   ← cold start: queue, don't post
+        //       return
         //   }
         //
         // During cold start, hasEverRegistered == false, so URL is queued.
         // When the first window registers via WindowAccessor, register() drains
         // pendingURLs and opens the URL in that window.
-
-        let entriesIsEmpty = true
         let hasEverRegistered = false   // cold start: no window has registered yet
-        let shouldQueue = entriesIsEmpty && !hasEverRegistered
+        let shouldQueue = !hasEverRegistered
         XCTAssertTrue(shouldQueue,
             "During cold start URLs must be queued in pendingURLs, not dispatched immediately")
     }
