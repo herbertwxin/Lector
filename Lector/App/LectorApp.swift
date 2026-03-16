@@ -115,9 +115,8 @@ final class AppWindowManager {
                 }
             }
         } else {
-            // No pending URL. Close this window if a document window already
-            // exists; it is a stray companion scene spawned by macOS during
-            // an "Open With" launch.
+            // No pending URL. Close this window ONLY if a document window ALREADY
+            // exists; it is a stray companion scene spawned by macOS.
             let hasDocumentWindow = entries.contains {
                 $0.state?.document != nil && $0.window != nil && $0.state !== state
             }
@@ -125,7 +124,6 @@ final class AppWindowManager {
                 window.close()
                 entries.removeAll { $0.window == nil || $0.state === state }
             }
-            // Otherwise keep it as the welcome screen.
         }
     }
 
