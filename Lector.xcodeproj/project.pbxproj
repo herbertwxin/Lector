@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AABB000000000000000000001 /* AnnotationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000000000000000000008 /* AnnotationTests.swift */; };
+		AABB000000000000000000002 /* CitationDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB000000000000000000009 /* CitationDetectorTests.swift */; };
+		AABB000000000000000000003 /* FileOpeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB00000000000000000000A /* FileOpeningTests.swift */; };
+		AABB00000000000000000000F /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AABB00000000000000000000E /* XCTest.framework */; };
 		007FA165F4329F267CEEA55A /* KeyTrie.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5184C61F86AA21587B2C1E17 /* KeyTrie.swift */; };
 		0AB7E09CFB70A6C6216665EC /* DefaultBindings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13CD0616BEEBDC4FFEA81C6B /* DefaultBindings.swift */; };
 		0ED3F64DC05F71E1254DE7FB /* Checksum.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD6BA22D69348FA63F1F524D /* Checksum.swift */; };
@@ -59,6 +63,11 @@
 		FD6BA22D69348FA63F1F524D /* Checksum.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Checksum.swift; sourceTree = "<group>"; };
 		FD6EA7ED1ACDEA1F6EFF6E9A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F2B3C4D5E6F7A8B9C0D1E2F3 /* Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications.swift; sourceTree = "<group>"; };
+		AABB000000000000000000008 /* AnnotationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationTests.swift; sourceTree = "<group>"; };
+		AABB000000000000000000009 /* CitationDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CitationDetectorTests.swift; sourceTree = "<group>"; };
+		AABB00000000000000000000A /* FileOpeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOpeningTests.swift; sourceTree = "<group>"; };
+		AABB00000000000000000000B /* LectorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LectorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AABB00000000000000000000E /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +76,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				ED11DAD98C6178B9CBA96B06 /* PDFKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AABB00000000000000000004 /* Frameworks (LectorTests) */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AABB00000000000000000000F /* XCTest.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -136,6 +153,7 @@
 			isa = PBXGroup;
 			children = (
 				E151CD8A0ABFD5A88857C6B1 /* Lector */,
+				AABB000000000000000000010 /* LectorTests */,
 				8F67915CF54673C91F2F2EA3 /* Frameworks */,
 				C5D7833206BB10F5A1B270F3 /* Products */,
 			);
@@ -145,8 +163,19 @@
 			isa = PBXGroup;
 			children = (
 				748A3F90ABCBB0D7904F68EA /* PDFKit.framework */,
+				AABB00000000000000000000E /* XCTest.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		AABB000000000000000000010 /* LectorTests */ = {
+			isa = PBXGroup;
+			children = (
+				AABB000000000000000000008 /* AnnotationTests.swift */,
+				AABB000000000000000000009 /* CitationDetectorTests.swift */,
+				AABB00000000000000000000A /* FileOpeningTests.swift */,
+			);
+			path = LectorTests;
 			sourceTree = "<group>";
 		};
 		9B2864AD2ECCED4F89DF9C0D /* PDF */ = {
@@ -192,6 +221,7 @@
 			isa = PBXGroup;
 			children = (
 				453731F83B6920FDCB825F46 /* Lector.app */,
+				AABB00000000000000000000B /* LectorTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -231,7 +261,42 @@
 			productReference = 453731F83B6920FDCB825F46 /* Lector.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AABB000000000000000000005 /* LectorTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AABB00000000000000000000C /* Build configuration list for PBXNativeTarget "LectorTests" */;
+			buildPhases = (
+				AABB000000000000000000003B /* Sources */,
+				AABB000000000000000000004 /* Frameworks (LectorTests) */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AABB000000000000000000006 /* PBXTargetDependency */,
+			);
+			name = LectorTests;
+			productName = LectorTests;
+			productReference = AABB00000000000000000000B /* LectorTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		AABB000000000000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 67C46523526AF823E31105D0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0D7B55CAC73A4DDC38A6D5B1;
+			remoteInfo = Lector;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		AABB000000000000000000006 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0D7B55CAC73A4DDC38A6D5B1 /* Lector */;
+			targetProxy = AABB000000000000000000007 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		67C46523526AF823E31105D0 /* Project object */ = {
@@ -243,6 +308,9 @@
 					0D7B55CAC73A4DDC38A6D5B1 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Manual;
+					};
+					AABB000000000000000000005 = {
+						TestTargetID = 0D7B55CAC73A4DDC38A6D5B1;
 					};
 				};
 			};
@@ -261,6 +329,7 @@
 			projectRoot = "";
 			targets = (
 				0D7B55CAC73A4DDC38A6D5B1 /* Lector */,
+				AABB000000000000000000005 /* LectorTests */,
 			);
 		};
 /* End PBXProject section */
@@ -302,6 +371,16 @@
 				ECB82961F8EEEABCAB2B4CEE /* SearchPanel.swift in Sources */,
 				36CC4A372B4D63EB65D22B1E /* StatusBar.swift in Sources */,
 				3A2808565F5B2BB36040CEAF /* TOCView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AABB000000000000000000003B /* Sources (LectorTests) */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AABB000000000000000000001 /* AnnotationTests.swift in Sources */,
+				AABB000000000000000000002 /* CitationDetectorTests.swift in Sources */,
+				AABB000000000000000000003 /* FileOpeningTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -471,6 +550,40 @@
 			};
 			name = Release;
 		};
+		AABB00000000000000000000D /* Debug (LectorTests) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lector.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lector.app/Contents/MacOS/Lector";
+			};
+			name = Debug;
+		};
+		AABB00000000000000000000D2 /* Release (LectorTests) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lector.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lector.app/Contents/MacOS/Lector";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -488,6 +601,15 @@
 			buildConfigurations = (
 				21AB54609E0B7341B4FB12C8 /* Debug */,
 				F89BDCEDCCE8B780C8BD6B05 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AABB00000000000000000000C /* Build configuration list for PBXNativeTarget "LectorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AABB00000000000000000000D /* Debug (LectorTests) */,
+				AABB00000000000000000000D2 /* Release (LectorTests) */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -122,9 +122,9 @@ enum CitationDetector {
         "homogeneous", "representative", "idiosyncratic", "total",
     ]
 
-    /// Known lowercase surname prefixes (e.g. "de", "van", "von").
+    /// Known lowercase surname prefixes (e.g. "de", "van", "von", "der").
     private static let knownLowerPrefixes: Set<String> = [
-        "de", "van", "von", "del", "le", "la", "al", "bin", "ibn",
+        "de", "van", "von", "del", "le", "la", "al", "bin", "ibn", "der", "den", "ter",
     ]
 
     /// Returns true if a trimmed line can start a new bibliography entry.
@@ -133,11 +133,18 @@ enum CitationDetector {
         if firstChar == "," || firstChar == "–" || firstChar == "-" { return false }
         if firstChar.isUppercase { return true }
         if firstChar.isLowercase {
-            let words = line.split(separator: " ", maxSplits: 2)
-            guard words.count >= 2 else { return false }
-            let firstWord = String(words[0]).lowercased()
-            if knownLowerPrefixes.contains(firstWord) {
-                return String(words[1]).first?.isUppercase == true
+            // Walk through chained lowercase particles ("van der Berg", "de la Cruz")
+            // until we find an uppercase word (entry start) or run out of particles.
+            var words = line.split(separator: " ")
+            var idx = 0
+            while idx < words.count {
+                let w = String(words[idx]).lowercased()
+                if knownLowerPrefixes.contains(w) {
+                    idx += 1
+                    continue
+                }
+                // Non-prefix word found: entry starts here only if it's uppercase
+                return words[idx].first?.isUppercase == true
             }
         }
         return false

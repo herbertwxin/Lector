@@ -340,6 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isRestorable = false
         window.center()
 
+        // WindowWrapper handles AppWindowManager registration via WindowAccessor.
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
