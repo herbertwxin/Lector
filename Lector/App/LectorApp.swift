@@ -84,36 +84,65 @@ struct PreferencesWrapper: View {
 
 // MARK: - Window Manager
 //
-// Design:
-//   Entry uses STRONG references (let window, let state) — keeps AppState alive
-//   even after SwiftUI releases its @State storage (scene abandoned).  Entries
-//   are removed only when the NSWindow posts willCloseNotification.
-//
-//   pendingURLs — cold-start queue: application(_:open:) may fire before any
-//                 window registers (hasEverRegistered == false).  The first blank
-//                 window drains this queue in register().
-//   lectorOpenNewWindow — used to create programmatic windows (running-app path).
-//
-// Cold-start sequence:
-//   1. application(_:open:) fires — hasEverRegistered may be false → URL queued
-//   2. First WindowGroup blank registers → drains pendingURLs → shows PDF
-//
-// Running-app sequence:
-//   3. application(_:open:) fires — blank window reused (strong ref kept), or
-//      new window created via lectorOpenNewWindow notification with URL
-//
-// KEY INVARIANTS:
-//   • Entry holds STRONG refs — entry survives SwiftUI @State release.
-//   • windowWillClose removes the entry — only cleanup path for strong refs.
-//   • lectorOpenNewWindow observer is set up in AppDelegate.init() — before any
-//     other lifecycle method can fire — ensuring it's never missed.
-//   • applicationShouldHandleReopen returns false — prevents SwiftUI from
-//     spawning blank companion scenes when the app opens a PDF.
-//   • application(_:open:) cancels deferredBlankWindow before calling openURL()
-//     so the deferred welcome screen never appears when a PDF is incoming.
-//   • register() runs a delayed sweep 0.5 s after a doc window appears so that
-//     late-arriving companion blank scenes are closed even if they register after
-//     the doc window's immediate sweep.
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  ARCHITECTURE NOTE — read before touching file-opening logic            ║
+// ║                                                                          ║
+// ║  There are four distinct entry points for opening files, each with       ║
+// ║  its own invariants.  Breaking any one of them tends to resurrect the    ║
+// ║  blank-welcome-screen or silent-no-window bugs.                          ║
+// ║                                                                          ║
+// ║  1. COLD START (hasEverRegistered == false)                              ║
+// ║     application(_:open:) fires before the SwiftUI WindowGroup window     ║
+// ║     exists.  URL is queued in pendingURLs.  The first window that calls  ║
+// ║     register() drains pendingURLs and loads the document.               ║
+// ║                                                                          ║
+// ║  2. FINDER OPEN / WARM START — blank window available                   ║
+// ║     application(_:open:) fires, openURL() finds a blank (welcome-screen) ║
+// ║     window in entries and calls openDocument(at:) on it directly.        ║
+// ║                                                                          ║
+// ║  3. FINDER OPEN / WARM START — no blank window                          ║
+// ║     application(_:open:) fires, openURL() posts lectorOpenNewWindow with  ║
+// ║     the URL in userInfo.  handleOpenNewWindow() creates an NSWindow,     ║
+// ║     calls openDocument(at:) BEFORE makeKeyAndOrderFront so that          ║
+// ║     register() sees state.document != nil and treats it as a real        ║
+// ║     document window (not a stray blank).                                 ║
+// ║                                                                          ║
+// ║  4. DOCK CLICK / REOPEN — no visible windows                            ║
+// ║     applicationShouldHandleReopen fires.  bringAnyWindowToFront()       ║
+// ║     deminiaturises an existing window (if any) and activates the app.   ║
+// ║     If there are NO windows, a blank window is scheduled with            ║
+// ║     DispatchQueue.main.async (deferred, not synchronous).               ║
+// ║     If application(_:open:) fires on the same run-loop cycle (Finder     ║
+// ║     file-open), it cancels the deferred blank window and openURL()       ║
+// ║     handles the PDF — no homepage flash.                                 ║
+// ║     If no file open follows (pure dock click), the deferred blank runs   ║
+// ║     → welcome screen shown.                                              ║
+// ║     NEVER post lectorOpenNewWindow synchronously in                      ║
+// ║     applicationShouldHandleReopen — that causes a homepage to appear     ║
+// ║     alongside the PDF (regression).                                      ║
+// ║     NEVER return true when !hasVisibleWindows — that tells SwiftUI's     ║
+// ║     WindowGroup to spawn a companion blank scene, which is the homepage  ║
+// ║     alongside PDF bug.  Return false instead (we manage the window).     ║
+// ║                                                                          ║
+// ║  INVARIANTS that must never be broken:                                   ║
+// ║  • Entry holds STRONG refs — entry survives SwiftUI @State release.     ║
+// ║  • windowWillClose removes the entry — only cleanup path for strong refs.║
+// ║  • lectorOpenNewWindow observer is set up in AppDelegate.init() — before ║
+// ║    any other lifecycle method fires — so cold-start notifications are    ║
+// ║    never missed even if application(_:open:) races ahead of             ║
+// ║    applicationDidFinishLaunching.                                        ║
+// ║  • allRegisteredWindows tracks every window ever registered so           ║
+// ║    sweepBlankWindows can close orphaned-but-visible blank windows whose  ║
+// ║    entries were removed prematurely by willCloseNotification.            ║
+// ║  • openDocument(at:) is always called BEFORE makeKeyAndOrderFront for   ║
+// ║    programmatic (handleOpenNewWindow) windows, so register() always sees ║
+// ║    state.document != nil.                                                ║
+// ║  • bringAnyWindowToFront() always calls NSApp.activate so the app       ║
+// ║    actually comes to the foreground.                                     ║
+// ║  • pendingURLs is only used during cold start (hasEverRegistered==false).║
+// ║  • applicationShouldHandleReopen returns false when !hasVisibleWindows  ║
+// ║    (we handle it) and true only when hasVisibleWindows (harmless default).║
+// ╚══════════════════════════════════════════════════════════════════════════╝
 
 final class AppWindowManager {
     static let shared = AppWindowManager()
@@ -129,10 +158,11 @@ final class AppWindowManager {
         let window: NSWindow
         let state: AppState
     }
+
     private var entries: [Entry] = []
     // Weak set of every window ever registered — used by sweepBlankWindows to
     // close windows whose entries were removed prematurely by willCloseNotification
-    // (macOS/SwiftUI fires it before the window is actually visible).
+    // (macOS/SwiftUI fires it before the window is actually off-screen).
     private var allRegisteredWindows = NSHashTable<NSWindow>.weakObjects()
     // Safety-net URLs to be consumed by the next blank window that registers.
     private var pendingURLs: [URL] = []
@@ -160,6 +190,7 @@ final class AppWindowManager {
             self?.entries.removeAll { $0.window === window }
         }
 
+        // 1. If this is a document window, sweep any blank companions.
         if state.document != nil {
             // Doc window — sweep blank companions immediately and again after a short
             // delay to catch SwiftUI companion scenes that register late.
@@ -172,7 +203,7 @@ final class AppWindowManager {
             return
         }
 
-        // Blank window — drain a pending URL if one is waiting.
+        // 2. Blank window — drain a pending URL if one is waiting.
         if let url = pendingURLs.first {
             pendingURLs.removeFirst()
             lectorLog("AppWindowManager.register: blank window consuming '\(url.lastPathComponent)'")
@@ -192,7 +223,7 @@ final class AppWindowManager {
             return
         }
 
-        // Blank window with no pending URL.
+        // 3. Blank window with no pending URL.
         let hasDocWindow = entries.contains {
             $0.state.document != nil && $0.state !== state
         }
@@ -230,7 +261,7 @@ final class AppWindowManager {
         lectorLog("AppWindowManager.sweepBlankWindows: remaining=\(entries.count)")
 
         // Also sweep any registered window whose entry was removed prematurely
-        // (macOS/SwiftUI fires willCloseNotification before the window is visible,
+        // (macOS/SwiftUI fires willCloseNotification before the window is off-screen,
         //  removing it from entries — but it still appears on screen afterward).
         let docWinNums = Set(entries.filter { $0.state.document != nil }.map { $0.window.windowNumber })
         let currentWin = entries.first(where: { $0.state === current })?.window
@@ -262,6 +293,15 @@ final class AppWindowManager {
             return
         }
 
+        // During launch, queue the URL. The first window to register will consume it.
+        if !hasEverRegistered {
+            lectorLog("AppWindowManager.openURL: queuing for launch")
+            if !pendingURLs.contains(url) {
+                pendingURLs.append(url)
+            }
+            return
+        }
+
         // If a blank (welcome-screen) window is already registered, load directly.
         if let entry = entries.first(where: { $0.state.document == nil }) {
             lectorLog("AppWindowManager.openURL: reuse blank window")
@@ -274,9 +314,8 @@ final class AppWindowManager {
             return
         }
 
-        // No blank window available (cold start or all windows closed) —
-        // create a new programmatic window with the URL pre-loaded.
-        // The observer is in AppDelegate.init() so it is always ready,
+        // No blank window available — create a new programmatic window with the URL
+        // pre-loaded.  The observer is in AppDelegate.init() so it is always ready,
         // even before applicationDidFinishLaunching completes.
         lectorLog("AppWindowManager.openURL: post lectorOpenNewWindow")
         NotificationCenter.default.post(
@@ -286,7 +325,8 @@ final class AppWindowManager {
         )
     }
 
-    /// Brings the first registered window to the front. Returns true if a window was found.
+    /// Deminiaturise and activate the first registered window, if any.
+    /// Returns true when a window was found and brought to front.
     @discardableResult
     func bringAnyWindowToFront() -> Bool {
         if let entry = entries.first {
@@ -386,8 +426,10 @@ struct LectorCommands: Commands {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
-    // Deferred work item for showing a blank welcome window on Dock click.
-    // Cancelled by application(_:open:) if URLs arrive first.
+    // Deferred blank-window work item posted by applicationShouldHandleReopen.
+    // Cancelled by application(_:open:) when a real URL arrives on the same
+    // run-loop cycle, preventing a spurious homepage from appearing alongside
+    // the PDF that Finder is opening.
     private var deferredBlankWindow: DispatchWorkItem?
 
     // Set up the lectorOpenNewWindow observer immediately — before any lifecycle
@@ -408,26 +450,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    // Clicking the Dock icon re-shows a window when none are visible.
-    // MUST return false — returning true lets SwiftUI spawn a blank companion
-    // scene alongside any PDF being simultaneously opened from Finder.
+    // Called when the Dock icon is clicked (or whenever the app is activated
+    // while it has no visible windows).  macOS also calls this BEFORE
+    // application(_:open:) when the user double-clicks a file in Finder
+    // while every window is closed or minimised.
+    //
+    // Strategy:
+    //   • Minimised windows  → deminiaturise + activate.  Return false (handled).
+    //   • No windows at all  → schedule a blank window with async dispatch so
+    //     that application(_:open:) — fired on the same run-loop cycle for
+    //     Finder file-opens — can cancel it before it executes.
+    //       - Dock-click only:   blank window appears → welcome screen. ✓
+    //       - Finder file-open:  application(_:open:) cancels the blank window
+    //                            and openURL() opens the PDF directly. ✓
+    //     Return false (handled).
+    //
+    // RETURN false when !hasVisibleWindows — we manage the window ourselves.
+    // RETURN true  when  hasVisibleWindows — visible windows exist; let macOS
+    //   handle focus normally (no window will be spawned).
+    //
+    // Returning true when !hasVisibleWindows tells SwiftUI to do its default
+    // WindowGroup reopen handling, which spawns a blank companion scene —
+    // that is exactly the homepage-alongside-PDF regression.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if !hasVisibleWindows {
-            lectorLog("AppDelegate.applicationShouldHandleReopen: no visible windows")
-            if !AppWindowManager.shared.bringAnyWindowToFront() {
-                // No window found — defer a blank welcome window by 100 ms.
-                // application(_:open:) will cancel this if URLs arrive first.
-                let item = DispatchWorkItem {
-                    lectorLog("AppDelegate.deferredBlankWindow: firing")
-                    NotificationCenter.default.post(
-                        name: .lectorOpenNewWindow, object: nil, userInfo: nil
-                    )
-                }
-                deferredBlankWindow = item
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: item)
+        guard !hasVisibleWindows else { return true }
+
+        lectorLog("AppDelegate.applicationShouldHandleReopen: no visible windows")
+        if !AppWindowManager.shared.bringAnyWindowToFront() {
+            // Defer so application(_:open:) can cancel this if a URL follows.
+            let item = DispatchWorkItem { [weak self] in
+                lectorLog("AppDelegate.deferredBlankWindow: firing")
+                self?.deferredBlankWindow = nil
+                NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil)
             }
+            deferredBlankWindow = item
+            DispatchQueue.main.async(execute: item)
         }
-        return false
+        return false  // we handled it; prevent SwiftUI spawning a companion blank scene
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -446,8 +505,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Called by macOS at launch and while running (Finder double-click, "Open With…").
     func application(_ application: NSApplication, open urls: [URL]) {
         lectorLog("AppDelegate.application(_:open:): urls=\(urls.count)")
-        // Cancel deferred blank window before opening files — prevents a welcome
-        // screen flash when the user double-clicked a PDF from Finder.
+        // Cancel any deferred blank window — real URLs take priority.
         deferredBlankWindow?.cancel()
         deferredBlankWindow = nil
         urls.forEach { AppWindowManager.shared.openURL($0) }
@@ -465,14 +523,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let newState = AppState(readOnly: readOnly)
 
         if let url {
-            // Load the document BEFORE building the view hierarchy so that
-            // register() sees state.document != nil and treats this as a real
-            // document window rather than a stray blank scene.
+            // Load the document BEFORE building the view hierarchy.
+            // WindowWrapper registers this window via WindowAccessor; if
+            // state.document were nil at that point register() would treat this
+            // window as a stray blank scene and close it.  Pre-loading ensures
+            // register() sees a real document window and sweeps any companion
+            // blank scenes macOS may have spawned alongside this one.
             newState.openDocument(at: url)
             if let page = startPage { newState.currentPage  = page }
             if let y    = startY    { newState.scrollYOffset = y   }
         }
-        // url == nil → blank welcome window; register() will drain pendingURLs.
+        // url == nil for two cases:
+        //   a. Cold start: register() will drain pendingURLs into this window.
+        //   b. applicationShouldHandleReopen with no windows: openURL() will
+        //      find this blank window and load the Finder-opened PDF into it.
 
         let rootView   = WindowWrapper(state: newState)
         let controller = NSHostingController(rootView: rootView)
