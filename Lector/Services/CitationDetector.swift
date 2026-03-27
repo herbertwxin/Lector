@@ -85,6 +85,21 @@ enum CitationDetector {
         options: [.caseInsensitive, .anchorsMatchLines]
     )
 
+    // MARK: - Precompiled Regular Expressions for Citation Detection
+
+    private static let yearInParensRegex = try! NSRegularExpression(pattern: #"\(((19|20)\d{2})\)"#)
+    private static let yearWithSpaceRegex = try! NSRegularExpression(pattern: #"\s((19|20)\d{2})[a-z]?\."#)
+    private static let yearWithPeriodRegex = try! NSRegularExpression(pattern: #"\.\s*((19|20)\d{2})[a-z]?\."#)
+    private static let yearWithCommaRegex = try! NSRegularExpression(pattern: #",\s*((19|20)\d{2}),\s*\d"#)
+    private static let yearFallbackRegex = try! NSRegularExpression(pattern: #"((?:19|20)\d{2})(?!\d)"#)
+
+    private static let firstAuthorYearPatternRegex = try! NSRegularExpression(pattern: #"^\s*([^,\(]+?)\s*[,\(].*?\(((19|20)\d{2})\)"#)
+
+    private static let authorYearWithPeriodRegex = try! NSRegularExpression(pattern: #"\.\s*((?:19|20)\d{2})[a-z]?\s*\."#)
+    private static let authorYearWithSpaceRegex = try! NSRegularExpression(pattern: #"\s+((?:19|20)\d{2})[a-z]?\s*\."#)
+
+    private static let citationAuthorYearPairsRegex = try! NSRegularExpression(pattern: #"([A-Z][A-Za-z\-]+(?:\s+[A-Z][A-Za-z\-]+)*)[^0-9]{0,25}(\d{4})"#)
+
     // MARK: - Author name helpers
 
     /// Words that cannot be the first token of an author surname.
@@ -264,33 +279,28 @@ enum CitationDetector {
         let fullRange = NSRange(location: 0, length: ns.length)
 
         // 1. Year in parens: (YYYY) — author-year format
-        if let regex = try? NSRegularExpression(pattern: #"\(((19|20)\d{2})\)"#),
-           let match = regex.firstMatch(in: text, range: fullRange),
+        if let match = yearInParensRegex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
         // 2. " YYYY[a-z]?." — space before year, optional letter suffix (e.g. "1980a."), period after
-        if let regex = try? NSRegularExpression(pattern: #"\s((19|20)\d{2})[a-z]?\."#),
-           let match = regex.firstMatch(in: text, range: fullRange),
+        if let match = yearWithSpaceRegex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
         // 3. ". YYYY[a-z]?." — period before and after (AEA format mid-entry, with optional letter suffix)
-        if let regex = try? NSRegularExpression(pattern: #"\.\s*((19|20)\d{2})[a-z]?\."#),
-           let match = regex.firstMatch(in: text, range: fullRange),
+        if let match = yearWithPeriodRegex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
         // 4. ", YYYY, N" — journal article: year followed by comma + volume number
-        if let regex = try? NSRegularExpression(pattern: #",\s*((19|20)\d{2}),\s*\d"#),
-           let match = regex.firstMatch(in: text, range: fullRange),
+        if let match = yearWithCommaRegex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
         // 5. Any 4-digit year not immediately followed by another digit — last resort.
         //    Using (?!\d) instead of \b so "1980a" still matches (word boundary fails there).
-        if let regex = try? NSRegularExpression(pattern: #"((?:19|20)\d{2})(?!\d)"#),
-           let match = regex.firstMatch(in: text, range: fullRange),
+        if let match = yearFallbackRegex.firstMatch(in: text, range: fullRange),
            let range = Range(match.range(at: 1), in: text) {
             return String(text[range])
         }
@@ -979,10 +989,8 @@ enum CitationDetector {
         // First author is everything before the first comma or paren (handles "Del Negro", "Sargent").
         // Restrict years to 19xx / 20xx and apply heuristics to avoid picking up titles or fragments.
         // Group 1: author; group 2: full 4-digit year (group 3 is the century prefix, not used).
-        let pattern = #"^\s*([^,\(]+?)\s*[,\(].*?\(((19|20)\d{2})\)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
         let ns = line as NSString
-        guard let match = regex.firstMatch(in: line, options: [], range: NSRange(location: 0, length: ns.length)) else {
+        guard let match = firstAuthorYearPatternRegex.firstMatch(in: line, options: [], range: NSRange(location: 0, length: ns.length)) else {
             return nil
         }
         guard match.numberOfRanges >= 3 else { return nil }
@@ -1016,9 +1024,8 @@ enum CitationDetector {
         // Prefer ". YYYY[a-z]?. " then fall back to " YYYY[a-z]?. " (name without period before year).
         // The optional [a-z] suffix handles letter-disambiguated years like "1980a" (Ramey, AEA style).
         // Restrict years to 19xx / 20xx to avoid treating issue numbers like 7540 or 7676 as years.
-        for (pattern, requireLetterBefore) in [(#"\.\s*((?:19|20)\d{2})[a-z]?\s*\."#, false), (#"\s+((?:19|20)\d{2})[a-z]?\s*\."#, true)] {
-            guard let regex = try? NSRegularExpression(pattern: pattern),
-                  let match = regex.firstMatch(in: line, options: [], range: fullRange),
+        for (regex, requireLetterBefore) in [(authorYearWithPeriodRegex, false), (authorYearWithSpaceRegex, true)] {
+            guard let match = regex.firstMatch(in: line, options: [], range: fullRange),
                   match.numberOfRanges >= 2,
                   match.range(at: 1).location != NSNotFound,
                   let yearRange = Range(match.range(at: 1), in: line),
@@ -1085,11 +1092,9 @@ enum CitationDetector {
         let snippet = nsString.substring(with: range)
 
         // Look for author–year pairs; author can be multi-word (e.g. "Del Negro", "von Mises").
-        let pattern = #"([A-Z][A-Za-z\-]+(?:\s+[A-Z][A-Za-z\-]+)*)[^0-9]{0,25}(\d{4})"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
         let snippetNS = snippet as NSString
         let fullRange = NSRange(location: 0, length: snippetNS.length)
-        let matches = regex.matches(in: snippet, options: [], range: fullRange)
+        let matches = citationAuthorYearPairsRegex.matches(in: snippet, options: [], range: fullRange)
         if matches.isEmpty { return nil }
 
         // Map charIndex into snippet coordinates.
