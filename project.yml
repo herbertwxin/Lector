@@ -2,7 +2,7 @@ name: Lector
 options:
   bundleIdPrefix: com.lector
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
 targets:
   Lector:
     type: application
@@ -12,7 +12,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lector.app
         SWIFT_VERSION: 5.9
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
         OTHER_LDFLAGS: "-lsqlite3"
         INFOPLIST_FILE: Lector/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Lector/Resources/Lector.entitlements
