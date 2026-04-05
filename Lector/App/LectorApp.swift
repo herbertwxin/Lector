@@ -108,15 +108,19 @@ struct PreferencesWrapper: View {
 // ║     document window (not a stray blank).                                 ║
 // ║                                                                          ║
 // ║  4. DOCK CLICK / REOPEN — no visible windows                            ║
-// ║     applicationShouldHandleReopen fires.  bringAnyWindowToFront()       ║
-// ║     deminiaturises an existing window (if any) and activates the app.   ║
-// ║     If there are NO windows, a blank window is scheduled with            ║
-// ║     DispatchQueue.main.async (deferred, not synchronous).               ║
+// ║     applicationShouldHandleReopen fires.  A DispatchWorkItem is          ║
+// ║     scheduled (deferredBlankWindow) that calls bringAnyWindowToFront()  ║
+// ║     to deminiaturise an existing window, or posts lectorOpenNewWindow    ║
+// ║     to open a blank welcome screen if there are none.                    ║
 // ║     If application(_:open:) fires on the same run-loop cycle (Finder     ║
-// ║     file-open), it cancels the deferred blank window and openURL()       ║
-// ║     handles the PDF — no homepage flash.                                 ║
-// ║     If no file open follows (pure dock click), the deferred blank runs   ║
-// ║     → welcome screen shown.                                              ║
+// ║     file-open while minimised or closed), it cancels deferredBlankWindow ║
+// ║     before it executes and openURL() handles the PDF directly.           ║
+// ║     If no file open follows (pure dock click), the deferred item runs    ║
+// ║     → existing window deminiaturised, or welcome screen shown.           ║
+// ║     NEVER call bringAnyWindowToFront() synchronously in                  ║
+// ║     applicationShouldHandleReopen — that prevents application(_:open:)  ║
+// ║     from being able to cancel the deminiaturise when a Finder file-open  ║
+// ║     arrives on the same run-loop cycle.                                  ║
 // ║     NEVER post lectorOpenNewWindow synchronously in                      ║
 // ║     applicationShouldHandleReopen — that causes a homepage to appear     ║
 // ║     alongside the PDF (regression).                                      ║
@@ -456,13 +460,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // while every window is closed or minimised.
     //
     // Strategy:
-    //   • Minimised windows  → deminiaturise + activate.  Return false (handled).
-    //   • No windows at all  → schedule a blank window with async dispatch so
-    //     that application(_:open:) — fired on the same run-loop cycle for
-    //     Finder file-opens — can cancel it before it executes.
-    //       - Dock-click only:   blank window appears → welcome screen. ✓
-    //       - Finder file-open:  application(_:open:) cancels the blank window
-    //                            and openURL() opens the PDF directly. ✓
+    //   • Minimised windows  → deferred deminiaturise + activate so that
+    //     application(_:open:) — fired on the same run-loop cycle for
+    //     Finder file-opens — can CANCEL it before it executes.
+    //       - Dock-click only:   deferred fires → bringAnyWindowToFront() ✓
+    //       - Finder file-open:  application(_:open:) cancels the deferred
+    //                            item; openURL() opens the PDF instead.    ✓
+    //   • No windows at all  → same deferred mechanism; if nothing cancels
+    //     it a blank welcome window is shown.
     //     Return false (handled).
     //
     // RETURN false when !hasVisibleWindows — we manage the window ourselves.
@@ -472,20 +477,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Returning true when !hasVisibleWindows tells SwiftUI to do its default
     // WindowGroup reopen handling, which spawns a blank companion scene —
     // that is exactly the homepage-alongside-PDF regression.
+    //
+    // IMPORTANT: bringAnyWindowToFront() must be deferred (not synchronous)
+    // so that application(_:open:) can cancel it when a Finder file-open
+    // arrives on the same run-loop cycle.  If it ran synchronously the window
+    // would deminiaturise before application(_:open:) could fire, preventing
+    // the new PDF from opening.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         guard !hasVisibleWindows else { return true }
 
         lectorLog("AppDelegate.applicationShouldHandleReopen: no visible windows")
-        if !AppWindowManager.shared.bringAnyWindowToFront() {
-            // Defer so application(_:open:) can cancel this if a URL follows.
-            let item = DispatchWorkItem { [weak self] in
-                lectorLog("AppDelegate.deferredBlankWindow: firing")
-                self?.deferredBlankWindow = nil
+        // Always defer — application(_:open:) may arrive on the same run-loop
+        // cycle (Finder file-open while minimised) and must be able to cancel
+        // this before it executes.
+        let item = DispatchWorkItem { [weak self] in
+            lectorLog("AppDelegate.deferredBlankWindow: firing")
+            self?.deferredBlankWindow = nil
+            if !AppWindowManager.shared.bringAnyWindowToFront() {
                 NotificationCenter.default.post(name: .lectorOpenNewWindow, object: nil)
             }
-            deferredBlankWindow = item
-            DispatchQueue.main.async(execute: item)
         }
+        deferredBlankWindow = item
+        DispatchQueue.main.async(execute: item)
         return false  // we handled it; prevent SwiftUI spawning a companion blank scene
     }
 
