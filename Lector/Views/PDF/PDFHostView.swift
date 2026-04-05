@@ -499,6 +499,22 @@ final class LectorPDFView: PDFView {
         }
     }
 
+    // MARK: - Mouse events
+
+    override func mouseDown(with event: NSEvent) {
+        // Record the current position before PDFKit follows any link annotation,
+        // so the user can press backspace to return here afterwards.
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        if let page = page(for: viewPoint, nearest: false) {
+            let pagePoint = convert(viewPoint, to: page)
+            if let annotation = page.annotation(at: pagePoint),
+               annotation.action != nil || annotation.url != nil {
+                state?.pushNavState()
+            }
+        }
+        super.mouseDown(with: event)
+    }
+
     // MARK: - Key events passed to AppState
 
     override func keyDown(with event: NSEvent) {

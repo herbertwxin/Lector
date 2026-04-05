@@ -22,6 +22,12 @@ final class NavHistory {
 
     /// Push a new state, discarding any forward history.
     func push(_ state: NavState) {
+        // If this state is identical to where we already are, do nothing.
+        // This prevents duplicate entries AND preserves the forward stack —
+        // important when goBack() is called repeatedly or when a mouse click
+        // on a non-navigating annotation fires a spurious push.
+        if index >= 0 && index < stack.count && stack[index] == state { return }
+
         // Drop forward history
         if index < stack.count - 1 {
             stack = Array(stack.prefix(index + 1))
