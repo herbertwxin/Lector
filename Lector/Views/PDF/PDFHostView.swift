@@ -119,6 +119,18 @@ final class PDFContainerView: NSView {
             )
         }
 
+        // PDFViewVisiblePagesChanged only fires when crossing page boundaries, not on
+        // every scroll position change within a page. Observe the PDFKit clip view's
+        // bounds directly so annotations stay in sync on every scroll frame.
+        if let pdfScrollView = pdfView.subviews.compactMap({ $0 as? NSScrollView }).first {
+            let clip = pdfScrollView.contentView
+            clip.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(refreshAnnotations),
+                name: NSView.boundsDidChangeNotification, object: clip
+            )
+        }
+
         // PDFDocument search notifications (object = the PDFDocument; filtered in handlers).
         NotificationCenter.default.addObserver(
             self, selector: #selector(searchDidFindMatch(_:)),
