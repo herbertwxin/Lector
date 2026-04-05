@@ -135,7 +135,7 @@ enum CitationDetector {
         if firstChar.isLowercase {
             // Walk through chained lowercase particles ("van der Berg", "de la Cruz")
             // until we find an uppercase word (entry start) or run out of particles.
-            var words = line.split(separator: " ")
+            let words = line.split(separator: " ")
             var idx = 0
             while idx < words.count {
                 let w = String(words[idx]).lowercased()
