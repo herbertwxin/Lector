@@ -454,11 +454,13 @@ final class AppState {
             let pageCount = document?.pageCount ?? 0
             currentPage = max(0, min(p, pageCount - 1))
         case .scrollDown(let d):
-            NotificationCenter.default.post(name: .lectorScrollBy, object: self,
-                                            userInfo: ["delta": d, "smooth": smoothScrollEnabled])
-        case .scrollUp(let d):
+            // Negative delta: PDFKit's scroll view is non-flipped (y increases upward),
+            // so moving origin toward lower y scrolls toward the end of the document.
             NotificationCenter.default.post(name: .lectorScrollBy, object: self,
                                             userInfo: ["delta": -d, "smooth": smoothScrollEnabled])
+        case .scrollUp(let d):
+            NotificationCenter.default.post(name: .lectorScrollBy, object: self,
+                                            userInfo: ["delta": d, "smooth": smoothScrollEnabled])
         case .nextPage:
             pushNavState()
             currentPage = min(currentPage + 1, (document?.pageCount ?? 1) - 1)

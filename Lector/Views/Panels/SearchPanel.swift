@@ -20,11 +20,15 @@ struct SearchPanel: View {
                     return .handled
                 }
                 .onKeyPress(phases: .down) { keyPress in
-                    if keyPress.key == .downArrow || keyPress.characters == "n" {
+                    // Use arrow keys only — do NOT intercept letter characters like
+                    // 'n' or 'N' here; those are valid search text and must not be
+                    // hijacked as navigation shortcuts while the field is focused.
+                    // The chevron buttons and ↑/↓ arrows cover all result navigation.
+                    if keyPress.key == .downArrow {
                         state.execute(.nextResult)
                         return .handled
                     }
-                    if keyPress.key == .upArrow || keyPress.characters == "N" {
+                    if keyPress.key == .upArrow {
                         state.execute(.prevResult)
                         return .handled
                     }

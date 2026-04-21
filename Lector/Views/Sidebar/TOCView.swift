@@ -63,7 +63,7 @@ struct TOCView: View {
             let entries = filteredEntries
             ScrollViewReader { proxy in
                 List(Array(entries.enumerated()), id: \.element.id) { idx, entry in
-                    Button(action: { jumpTo(entry: entry) }) {
+                    Button(action: { jumpTo(entry: entry); closeTOC() }) {
                         HStack(spacing: 0) {
                             // Indent
                             Rectangle()
@@ -81,6 +81,7 @@ struct TOCView: View {
                             }
                             Spacer()
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(
