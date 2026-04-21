@@ -40,16 +40,6 @@ struct LectorApp: App {
         .commands {
             LectorCommands()
         }
-        // On macOS 15+ / macOS 26, the SwiftUI pipeline may route file-open
-        // events through .onOpenURL instead of (or in addition to)
-        // AppDelegate.application(_:open:).  Register here so Finder
-        // double-clicks are handled regardless of which path the OS uses.
-        // AppWindowManager.openURL() is idempotent (it deduplicates by URL
-        // and by pending-open state), so double-firing is harmless.
-        .onOpenURL { url in
-            lectorLog("LectorApp.onOpenURL: '\(url.lastPathComponent)'")
-            AppWindowManager.shared.openURL(url)
-        }
 
         // Settings window
         Settings {
