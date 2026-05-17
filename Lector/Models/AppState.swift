@@ -120,6 +120,9 @@ final class AppState {
     var portalSourcePage: Int? = nil
     var portalSourceY: Double = 0
 
+    // MARK: Background tasks
+    @ObservationIgnored private var annotationLoadTask: Task<Void, Never>?
+
     // MARK: Services
     @ObservationIgnored let isReadOnly: Bool
 
@@ -366,10 +369,29 @@ final class AppState {
 
     func loadAnnotations() {
         guard documentID > 0 else { return }
-        bookmarks  = (try? database.fetchBookmarks(docID: documentID)) ?? []
-        highlights = (try? database.fetchHighlights(docID: documentID)) ?? []
-        marks      = (try? database.fetchMarks(docID: documentID)) ?? []
-        portals    = (try? database.fetchPortals(srcDocID: documentID)) ?? []
+
+        // Cancel any in-flight load for this document (or a previous one).
+        annotationLoadTask?.cancel()
+
+        let capturedID = documentID
+        annotationLoadTask = Task { [weak self] in
+            // Perform the multi-fetch on a background thread.
+            // If it fails, we treat it as an empty collection to clear the stale state.
+            let collection = (try? self?.database.fetchAllAnnotations(docID: capturedID)) ??
+                AnnotationCollection(bookmarks: [], highlights: [], marks: [], portals: [])
+
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run { [weak self] in
+                guard let self = self,
+                      self.documentID == capturedID else { return }
+
+                self.bookmarks  = collection.bookmarks
+                self.highlights = collection.highlights
+                self.marks      = collection.marks
+                self.portals    = collection.portals
+            }
+        }
     }
 
     func loadRecentDocuments() {
