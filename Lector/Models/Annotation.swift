@@ -112,6 +112,15 @@ struct Portal: Identifiable, Hashable {
     let dstZoom: Double
 }
 
+// MARK: - AnnotationCollection
+
+struct AnnotationCollection {
+    let bookmarks: [Bookmark]
+    let highlights: [Highlight]
+    let marks: [Mark]
+    let portals: [Portal]
+}
+
 // MARK: - Recent Document (for QuickSelectPanel)
 
 struct RecentDocument: Identifiable {

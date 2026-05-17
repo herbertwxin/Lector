@@ -437,6 +437,23 @@ final class Database {
         try exec(sql, bindings: [srcDocID, srcPage, srcY, tolerance])
     }
 
+    // MARK: - Annotations (Batch)
+
+    func fetchAllAnnotations(docID: Int64) throws -> AnnotationCollection {
+        let bookmarks = try fetchBookmarks(docID: docID)
+        let highlights = try fetchHighlights(docID: docID)
+        let marks = try fetchMarks(docID: docID)
+        let portals = try fetchPortals(srcDocID: docID)
+        return AnnotationCollection(
+            bookmarks: bookmarks,
+            highlights: highlights,
+            marks: marks,
+            portals: portals
+        )
+    }
+
+    // MARK: - Portals (continued)
+
     func nearestPortal(srcDocID: Int64, page: Int, yOffset: Double, radius: Double = 50.0) throws -> Portal? {
         let sql = """
         SELECT id, src_doc_id, src_page, src_y, dst_url, dst_page, dst_y, dst_zoom
