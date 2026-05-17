@@ -781,6 +781,20 @@ enum CitationDetector {
         var result: [Int: [(rect: CGRect, key: String)]] = [:]
         let pageCount = document.pageCount
 
+        // Pre-compile author-year regexes to avoid compiling them inside the page loop.
+        var authorYearRegexes: [(key: String, regex: NSRegularExpression)] = []
+        for (key, _) in catalog {
+            guard Int(key) == nil else { continue }  // numeric keys handled separately
+            let parts = key.split(separator: " ")
+            guard parts.count >= 2, let year = parts.last else { continue }
+            let author = parts.dropLast().joined(separator: " ")
+            let escapedAuthor = NSRegularExpression.escapedPattern(for: author)
+            let pattern = "\(escapedAuthor)[^.!\\n]{0,60}\(year)"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                authorYearRegexes.append((key, regex))
+            }
+        }
+
         for pageIdx in 0..<pageCount {
             guard !excludePages.contains(pageIdx) else { continue }
             guard let page = document.page(at: pageIdx) else { continue }
@@ -813,14 +827,7 @@ enum CitationDetector {
             //    Pattern excludes sentence-ending punctuation (., !) and newlines so we don't
             //    accidentally span across sentences.  Window is 60 chars to cover long
             //    co-author lists like "(Smith, Jones, Brown, Wilson, and Taylor 2020)".
-            for (key, _) in catalog {
-                guard Int(key) == nil else { continue }  // numeric keys handled above
-                let parts = key.split(separator: " ")
-                guard parts.count >= 2, let year = parts.last else { continue }
-                let author = parts.dropLast().joined(separator: " ")
-                let escapedAuthor = NSRegularExpression.escapedPattern(for: author)
-                let pattern = "\(escapedAuthor)[^.!\\n]{0,60}\(year)"
-                guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { continue }
+            for (key, regex) in authorYearRegexes {
                 let matches = regex.matches(in: pageString, options: [], range: fullRange)
                 for match in matches {
                     if let sel = page.selection(for: match.range),
