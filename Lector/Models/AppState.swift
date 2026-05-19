@@ -1180,8 +1180,7 @@ final class AppState {
         guard documentID > 0 else { return }
         // Match any highlight that spans the current page, not just those whose
         // startPage is exactly currentPage (multi-page highlights would be missed).
-        let nearby = highlights.filter { $0.startPage <= currentPage && $0.endPage >= currentPage }
-        if let first = nearby.first {
+        if let first = highlights.first(where: { $0.startPage <= currentPage && $0.endPage >= currentPage }) {
             try? database.deleteHighlight(id: first.id)
             loadAnnotations()
             statusMessage = "Highlight removed"
