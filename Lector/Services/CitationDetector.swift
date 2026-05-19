@@ -85,6 +85,12 @@ enum CitationDetector {
         options: [.caseInsensitive, .anchorsMatchLines]
     )
 
+    /// Matches author-year pairs; author can be multi-word (e.g. "Del Negro", "von Mises").
+    private static let authorYearPairRegex = try? NSRegularExpression(
+        pattern: #"([A-Z][A-Za-z\-]+(?:\s+[A-Z][A-Za-z\-]+)*)[^0-9]{0,25}(\d{4})"#,
+        options: []
+    )
+
     // MARK: - Author name helpers
 
     /// Words that cannot be the first token of an author surname.
@@ -1092,8 +1098,7 @@ enum CitationDetector {
         let snippet = nsString.substring(with: range)
 
         // Look for author–year pairs; author can be multi-word (e.g. "Del Negro", "von Mises").
-        let pattern = #"([A-Z][A-Za-z\-]+(?:\s+[A-Z][A-Za-z\-]+)*)[^0-9]{0,25}(\d{4})"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
+        guard let regex = CitationDetector.authorYearPairRegex else { return nil }
         let snippetNS = snippet as NSString
         let fullRange = NSRange(location: 0, length: snippetNS.length)
         let matches = regex.matches(in: snippet, options: [], range: fullRange)
